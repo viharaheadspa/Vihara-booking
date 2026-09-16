@@ -331,10 +331,11 @@ export default function SpaBookingSystem() {
   )
 
   const depositAmount = useMemo(() => {
-    if (payChoice === 'full') return totalPrice
+    const effectiveTotal = Math.max(0, totalPrice - giftCardDiscount)
+    if (payChoice === 'full') return effectiveTotal
     const pct = isCouples ? settings.couplesDepositPercent : settings.depositPercent
-    return Math.round(totalPrice * pct / 100)
-  }, [totalPrice, isCouples, settings, payChoice])
+    return Math.round(effectiveTotal * pct / 100)
+  }, [totalPrice, isCouples, settings, payChoice, giftCardDiscount])
 
   // Eligible staff = staff who can perform ALL selected services
   const eligibleStaff = useMemo(() => {
@@ -497,6 +498,16 @@ export default function SpaBookingSystem() {
       }
 
       setBookingRef(ref)
+
+      // Reduce gift card balance if one was applied
+      if (appliedGiftCard && giftCardDiscount > 0 && supabase) {
+        const newRemaining = Math.max(0, appliedGiftCard.remaining - giftCardDiscount)
+        await supabase.from('gift_cards').update({
+          remaining: newRemaining,
+          is_active: newRemaining > 0,
+        }).eq('id', appliedGiftCard.id)
+      }
+
       setStep(7)
     } catch (err) {
       console.error('Booking error:', err)
@@ -661,6 +672,10 @@ export default function SpaBookingSystem() {
             customer2={customer2}
             payChoice={payChoice}
             setPayChoice={setPayChoice}
+            appliedGiftCard={appliedGiftCard}
+            setAppliedGiftCard={setAppliedGiftCard}
+            giftCardDiscount={giftCardDiscount}
+            setGiftCardDiscount={setGiftCardDiscount}
             loading={loading}
             onConfirm={submitBooking}
             onBack={() => setStep(isCouples ? 5 : 4)}
@@ -1132,11 +1147,50 @@ function StepPayment({
   selectedDate, selectedTime, totalDuration, totalPrice,
   depositAmount, isCouples, settings, customer, customer2,
   payChoice, setPayChoice,
+  appliedGiftCard, setAppliedGiftCard, giftCardDiscount, setGiftCardDiscount,
   loading, onConfirm, onBack,
 }) {
   const staffMember = staff.find(s => s.id === selectedStaff)
   const endMin = selectedTime.hour * 60 + selectedTime.minute + totalDuration
-  const minDeposit = Math.round(totalPrice * (isCouples ? settings.couplesDepositPercent : settings.depositPercent) / 100)
+  const effectiveTotal = Math.max(0, totalPrice - giftCardDiscount)
+  const minDeposit = Math.round(effectiveTotal * (isCouples ? settings.couplesDepositPercent : settings.depositPercent) / 100)
+  const [gcInput, setGcInput] = React.useState('')
+  const [gcError, setGcError] = React.useState('')
+  const [gcLoading, setGcLoading] = React.useState(false)
+
+  async function applyGiftCard() {
+    const code = gcInput.trim().toUpperCase()
+    if (!code) return
+    setGcLoading(true)
+    setGcError('')
+    try {
+      const { createClient } = await import('@supabase/supabase-js')
+      const sb = import.meta.env.VITE_SUPABASE_URL
+        ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
+        : null
+      if (!sb) { setGcError('Gift cards not available offline.'); setGcLoading(false); return }
+      const { data, error } = await sb.from('gift_cards')
+        .select('id, code, remaining, expires_at, is_active')
+        .eq('code', code)
+        .maybeSingle()
+      if (error || !data) { setGcError('Code not found.'); setGcLoading(false); return }
+      if (!data.is_active) { setGcError('This gift card has already been used or voided.'); setGcLoading(false); return }
+      if (data.expires_at && new Date(data.expires_at) < new Date()) { setGcError('This gift card has expired.'); setGcLoading(false); return }
+      if (data.remaining <= 0) { setGcError('No remaining balance on this gift card.'); setGcLoading(false); return }
+      const discount = Math.min(data.remaining, totalPrice)
+      setAppliedGiftCard({ id: data.id, code: data.code, remaining: data.remaining })
+      setGiftCardDiscount(discount)
+      setGcInput('')
+      setGcError('')
+    } catch(e) { setGcError('Could not validate code. Please try again.') }
+    setGcLoading(false)
+  }
+
+  function removeGiftCard() {
+    setAppliedGiftCard(null)
+    setGiftCardDiscount(0)
+    setGcError('')
+  }
 
   return (
     <div style={S.stepWrap}>
@@ -1205,6 +1259,43 @@ function StepPayment({
         <div style={S.depositNote}>
           A 50% deposit is required to secure your booking. The remaining balance is payable on the day.
         </div>
+      </div>
+
+      {/* Gift card redemption */}
+      <div style={S.depositBox}>
+        <div style={S.depositTitle}>Have a gift card?</div>
+        {appliedGiftCard ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+            <div style={{ flex: 1, background: '#f0ece6', borderRadius: 8, padding: '10px 14px', fontSize: 14, color: '#3C2A1E' }}>
+              <strong>{appliedGiftCard.code}</strong> — ${giftCardDiscount} credit applied
+              {giftCardDiscount < appliedGiftCard.remaining && (
+                <span style={{ fontSize: 12, color: '#8A7060', display: 'block' }}>
+                  ${appliedGiftCard.remaining - giftCardDiscount} remaining on card after this booking
+                </span>
+              )}
+            </div>
+            <button style={S.ghostBtn} onClick={removeGiftCard}>Remove</button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+            <input
+              style={{ flex: 1, padding: '10px 14px', border: '1.5px solid #D4C5B0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', background: '#FAF6F0', color: '#3C2A1E' }}
+              placeholder="Enter gift card code"
+              value={gcInput}
+              onChange={e => setGcInput(e.target.value.toUpperCase())}
+              onKeyDown={e => e.key === 'Enter' && applyGiftCard()}
+            />
+            <button style={S.primaryBtn} onClick={applyGiftCard} disabled={gcLoading || !gcInput.trim()}>
+              {gcLoading ? '…' : 'Apply'}
+            </button>
+          </div>
+        )}
+        {gcError && <div style={{ color: '#b44', fontSize: 13, marginTop: 6 }}>{gcError}</div>}
+        {giftCardDiscount > 0 && (
+          <div style={{ marginTop: 10, fontSize: 14, color: '#3C2A1E' }}>
+            Original total: <s>${totalPrice}</s> → <strong>${effectiveTotal} after gift card</strong>
+          </div>
+        )}
       </div>
 
       {/* Stripe placeholder */}
@@ -1706,6 +1797,153 @@ function AdminPinEntry({ correctPin, onSuccess }) {
 }
 
 // ── Admin Panel ───────────────────────────────────────────────────────────────
+
+// ── Admin: Gift Cards ─────────────────────────────────────────────────────────
+function AdminGiftCards() {
+  const [cards, setCards] = React.useState([])
+  const [loading, setLoading] = React.useState(true)
+  const [showForm, setShowForm] = React.useState(false)
+  const [saving, setSaving] = React.useState(false)
+  const [form, setForm] = React.useState({ recipient_name: '', recipient_email: '', purchaser_name: '', amount: '', notes: '', expires_at: '' })
+
+  async function getSupabase() {
+    const { createClient } = await import('@supabase/supabase-js')
+    return import.meta.env.VITE_SUPABASE_URL
+      ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
+      : null
+  }
+
+  async function loadCards() {
+    setLoading(true)
+    const sb = await getSupabase()
+    if (!sb) { setLoading(false); return }
+    const { data } = await sb.from('gift_cards').select('*').order('created_at', { ascending: false })
+    setCards(data || [])
+    setLoading(false)
+  }
+
+  React.useEffect(() => { loadCards() }, [])
+
+  function generateCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    const seg = () => Array.from({length:4}, () => chars[Math.floor(Math.random()*chars.length)]).join('')
+    return `VIHARA-${seg()}-${seg()}`
+  }
+
+  async function createCard() {
+    if (!form.amount || !form.recipient_name) return
+    setSaving(true)
+    const sb = await getSupabase()
+    if (!sb) { setSaving(false); return }
+    const code = generateCode()
+    const amt = parseFloat(form.amount)
+    await sb.from('gift_cards').insert({
+      code,
+      amount: amt,
+      remaining: amt,
+      recipient_name: form.recipient_name,
+      recipient_email: form.recipient_email || null,
+      purchaser_name: form.purchaser_name || null,
+      notes: form.notes || null,
+      expires_at: form.expires_at || null,
+      is_active: true,
+    })
+    setForm({ recipient_name: '', recipient_email: '', purchaser_name: '', amount: '', notes: '', expires_at: '' })
+    setShowForm(false)
+    setSaving(false)
+    loadCards()
+  }
+
+  async function voidCard(id) {
+    const sb = await getSupabase()
+    if (!sb) return
+    await sb.from('gift_cards').update({ is_active: false }).eq('id', id)
+    loadCards()
+  }
+
+  const inp = (field, placeholder, type='text') => (
+    <input
+      type={type}
+      placeholder={placeholder}
+      value={form[field]}
+      onChange={e => setForm(f => ({...f, [field]: e.target.value}))}
+      style={{ padding: '8px 12px', border: '1.5px solid #D4C5B0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', background: '#FAF6F0', color: '#3C2A1E', width: '100%' }}
+    />
+  )
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <h2 style={{ fontFamily: '"Cormorant Garamond", serif', fontSize: 28, color: '#3C2A1E', fontWeight: 600 }}>Gift Cards</h2>
+        <button style={{ background: '#3C2A1E', color: '#FAF6F0', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}
+          onClick={() => setShowForm(s => !s)}>
+          {showForm ? 'Cancel' : '+ Issue gift card'}
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={{ background: '#FAF6F0', border: '1px solid #D4C5B0', borderRadius: 12, padding: 24, marginBottom: 24 }}>
+          <h3 style={{ fontFamily: '"Cormorant Garamond", serif', fontSize: 20, color: '#3C2A1E', marginBottom: 16 }}>Issue New Gift Card</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div><label style={{ fontSize: 12, color: '#8A7060', display: 'block', marginBottom: 4 }}>Recipient name *</label>{inp('recipient_name', 'e.g. Sarah Chen')}</div>
+            <div><label style={{ fontSize: 12, color: '#8A7060', display: 'block', marginBottom: 4 }}>Recipient email</label>{inp('recipient_email', 'sarah@example.com', 'email')}</div>
+            <div><label style={{ fontSize: 12, color: '#8A7060', display: 'block', marginBottom: 4 }}>Purchased by</label>{inp('purchaser_name', 'e.g. Michael Chen')}</div>
+            <div><label style={{ fontSize: 12, color: '#8A7060', display: 'block', marginBottom: 4 }}>Amount (AUD) *</label>{inp('amount', 'e.g. 252', 'number')}</div>
+            <div><label style={{ fontSize: 12, color: '#8A7060', display: 'block', marginBottom: 4 }}>Expiry date</label>{inp('expires_at', '', 'date')}</div>
+            <div><label style={{ fontSize: 12, color: '#8A7060', display: 'block', marginBottom: 4 }}>Notes</label>{inp('notes', 'e.g. Christmas gift')}</div>
+          </div>
+          <button
+            style={{ marginTop: 16, background: '#C4A35A', color: '#FAF6F0', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}
+            onClick={createCard} disabled={saving}>
+            {saving ? 'Creating…' : 'Generate & save gift card'}
+          </button>
+          <p style={{ fontSize: 12, color: '#8A7060', marginTop: 10 }}>A unique code will be generated. Share it with the recipient manually or via email.</p>
+        </div>
+      )}
+
+      {loading ? (
+        <p style={{ color: '#8A7060' }}>Loading…</p>
+      ) : cards.length === 0 ? (
+        <p style={{ color: '#8A7060' }}>No gift cards issued yet.</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #D4C5B0' }}>
+                {['Code','Recipient','Amount','Remaining','Expires','Status',''].map(h => (
+                  <th key={h} style={{ textAlign: 'left', padding: '8px 12px', color: '#8A7060', fontWeight: 500, fontSize: 12 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {cards.map(c => (
+                <tr key={c.id} style={{ borderBottom: '1px solid #EDE5D8' }}>
+                  <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 600, color: '#3C2A1E' }}>{c.code}</td>
+                  <td style={{ padding: '10px 12px', color: '#3C2A1E' }}>{c.recipient_name}<br/><span style={{ fontSize: 11, color: '#8A7060' }}>{c.recipient_email || ''}</span></td>
+                  <td style={{ padding: '10px 12px', color: '#3C2A1E' }}>${c.amount}</td>
+                  <td style={{ padding: '10px 12px', color: c.remaining < c.amount ? '#C4A35A' : '#3C2A1E', fontWeight: 600 }}>${c.remaining}</td>
+                  <td style={{ padding: '10px 12px', color: '#8A7060' }}>{c.expires_at ? new Date(c.expires_at).toLocaleDateString('en-AU') : '—'}</td>
+                  <td style={{ padding: '10px 12px' }}>
+                    <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, background: c.is_active ? '#e8f0e8' : '#f0e8e8', color: c.is_active ? '#4a7a4a' : '#8a4a4a' }}>
+                      {c.is_active ? 'Active' : 'Voided'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 12px' }}>
+                    {c.is_active && (
+                      <button style={{ background: 'none', border: '1px solid #D4C5B0', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', color: '#8A7060' }}
+                        onClick={() => voidCard(c.id)}>Void</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AdminPanel({ categories, setCategories, allAddons, setAllAddons, staff, setStaff, settings, setSettings, adminTab, setAdminTab, onLogout }) {
   const navItems = [
     ['dashboard', '⌂  Dashboard'],
