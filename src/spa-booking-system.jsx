@@ -568,6 +568,7 @@ export default function SpaBookingSystem() {
           <StepWhoIsThis
             onSelect={(v) => { setBookingFor(v); setStep(v === 'group' ? 'group' : 1) }}
             onBack={() => setSelectedLocation(null)}
+            selectedLocation={selectedLocation}
           />
         )}
         {selectedLocation && step === 'group' && (
@@ -700,7 +701,8 @@ export default function SpaBookingSystem() {
 }
 
 // ── Step 0: Who Is This For ───────────────────────────────────────────────────
-function StepWhoIsThis({ onSelect, onBack }) {
+function StepWhoIsThis({ onSelect, onBack, selectedLocation }) {
+  const isDromana = selectedLocation?.key === 'dromana'
   return (
     <div style={{...S.stepWrap, textAlign: 'center'}}>
       <h2 style={S.stepTitle}>Who is joining us?</h2>
@@ -711,17 +713,24 @@ function StepWhoIsThis({ onSelect, onBack }) {
           <div style={S.whoTitle}>Just me</div>
           <div style={S.whoSub}>A solo treatment for one guest</div>
         </button>
-        <button style={S.whoCard} onClick={() => onSelect('couple')}>
-          <div style={S.whoIcon}>✦ ✦</div>
-          <div style={S.whoTitle}>A couple</div>
-          <div style={S.whoSub}>Two guests, side by side</div>
-        </button>
-        <button style={S.whoCard} onClick={() => onSelect('group')}>
-          <div style={S.whoIcon}>✦ ✦ ✦</div>
-          <div style={S.whoTitle}>2–3 Guests</div>
-          <div style={S.whoSub}>A group of friends, each choosing their own treatment</div>
-        </button>
+        {!isDromana && (
+          <button style={S.whoCard} onClick={() => onSelect('couple')}>
+            <div style={S.whoIcon}>✦ ✦</div>
+            <div style={S.whoTitle}>A couple</div>
+            <div style={S.whoSub}>Two guests, side by side</div>
+          </button>
+        )}
+        {!isDromana && (
+          <button style={S.whoCard} onClick={() => onSelect('group')}>
+            <div style={S.whoIcon}>✦ ✦ ✦</div>
+            <div style={S.whoTitle}>2–3 Guests</div>
+            <div style={S.whoSub}>A group of friends, each choosing their own treatment</div>
+          </button>
+        )}
       </div>
+      {isDromana && (
+        <p style={{...S.stepSub, marginTop: 20, fontStyle: 'italic'}}>Dromana is a single treatment room — solo bookings only.</p>
+      )}
       <div style={{ marginTop: 32 }}>
         <button style={S.ghostBtn} onClick={onBack}>← Back</button>
       </div>
