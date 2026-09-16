@@ -195,6 +195,24 @@ const DEFAULT_SETTINGS = {
   adminPin: '1234',
 }
 
+// ── Locations ─────────────────────────────────────────────────────────────────
+const LOCATIONS = [
+  {
+    id: '00000000-0000-0000-0000-000000000001',
+    key: 'parkdale',
+    name: 'Parkdale',
+    address: '1 Chandler Street, Parkdale VIC 3195',
+    detail: 'Parkdale',
+  },
+  {
+    id: '00000000-0000-0000-0000-000000000002',
+    key: 'dromana',
+    name: 'Dromana',
+    address: '183 Point Nepean Rd, Dromana VIC 3936',
+    detail: 'Inside HUM Yoga & Pilates, Dromana',
+  },
+]
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmt = (mins) => {
   if (!mins) return '0 mins'
@@ -244,6 +262,9 @@ export default function SpaBookingSystem() {
   const [allAddons, setAllAddons] = useState(() => loadData('addons', DEFAULT_ADDONS))
   const [staff, setStaff] = useState(() => loadData('staff', DEFAULT_STAFF))
   const [settings, setSettings] = useState(() => loadData('settings', DEFAULT_SETTINGS))
+
+  // Location selection (pre-booking)
+  const [selectedLocation, setSelectedLocation] = useState(null) // null | LOCATIONS[n]
 
   // Booking state
   const [step, setStep] = useState(0)
@@ -435,7 +456,7 @@ export default function SpaBookingSystem() {
 
       const createAppointmentRecord = async (clientId, staffId, price, paid, notes) => {
         const { data: appt, error } = await supabase.from('appointments').insert({
-          location_id: '00000000-0000-0000-0000-000000000001',
+          location_id: selectedLocation?.id ?? '00000000-0000-0000-0000-000000000001',
           client_id: clientId, staff_id: staffId,
           start_time: startISO, end_time: endISO,
           duration_mins: totalDuration, total_price: price,
@@ -486,6 +507,7 @@ export default function SpaBookingSystem() {
   }
 
   const resetBooking = () => {
+    setSelectedLocation(null)
     setStep(0)
     setBookingFor(null)
     setSelectedServices([])
@@ -525,13 +547,13 @@ export default function SpaBookingSystem() {
     <div style={S.page}>
       {/* Header */}
       <header style={S.header}>
-        <div style={S.logoWrap}>
-          <h1 style={S.logo}>{settings.businessName}</h1>
-          <p style={S.logoSub}>{settings.businessAddress}</p>
-        </div>
+        <h1 style={S.logo}>{settings.businessName}</h1>
+        <p style={S.logoSub}>
+          {selectedLocation ? selectedLocation.detail : 'Japanese Head Spa & Blow Dry Lounge'}
+        </p>
         {step > 0 && step < 7 && (
           <div style={S.progressBar}>
-            {[1,2,3,4,5,6].filter(n => isCouples || n !== 5).map((n, i, arr) => (
+            {[1,2,3,4,5,6].filter(n => isCouples || n !== 5).map((n) => (
               <div key={n} style={{...S.progressDot, ...(step >= n ? S.progressActive : {})}} />
             ))}
           </div>
@@ -539,10 +561,16 @@ export default function SpaBookingSystem() {
       </header>
 
       <main style={S.main}>
-        {step === 0 && (
-          <StepWhoIsThis onSelect={(v) => { setBookingFor(v); setStep(v === 'group' ? 'group' : 1) }} />
+        {!selectedLocation && (
+          <StepLocation onSelect={setSelectedLocation} />
         )}
-        {step === 'group' && (
+        {selectedLocation && step === 0 && (
+          <StepWhoIsThis
+            onSelect={(v) => { setBookingFor(v); setStep(v === 'group' ? 'group' : 1) }}
+            onBack={() => setSelectedLocation(null)}
+          />
+        )}
+        {selectedLocation && step === 'group' && (
           <GroupBookingFlow
             soloCategories={categories.filter(c => !c.couples)}
             staff={staff}
@@ -651,13 +679,14 @@ export default function SpaBookingSystem() {
             depositAmount={depositAmount}
             isCouples={isCouples}
             settings={settings}
+            selectedLocation={selectedLocation}
             onNewBooking={resetBooking}
           />
         )}
       </main>
 
       {/* Floating booking summary */}
-      {step > 1 && step < 7 && chosenServices.length > 0 && (
+      {selectedLocation && step > 1 && step < 7 && chosenServices.length > 0 && (
         <div style={S.floatingSummary}>
           <div style={S.floatServices}>
             {chosenServices.map(s => s.name).join(' + ')}
@@ -671,11 +700,11 @@ export default function SpaBookingSystem() {
 }
 
 // ── Step 0: Who Is This For ───────────────────────────────────────────────────
-function StepWhoIsThis({ onSelect }) {
+function StepWhoIsThis({ onSelect, onBack }) {
   return (
     <div style={{...S.stepWrap, textAlign: 'center'}}>
-      <h2 style={S.stepTitle}>Who is this treatment for?</h2>
-      <p style={S.stepSub}>Let us know so we can tailor your booking experience</p>
+      <h2 style={S.stepTitle}>Who is joining us?</h2>
+      <p style={S.stepSub}>Let us know so we can tailor your booking</p>
       <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 32, flexWrap: 'wrap' }}>
         <button style={S.whoCard} onClick={() => onSelect('solo')}>
           <div style={S.whoIcon}>✦</div>
@@ -692,6 +721,31 @@ function StepWhoIsThis({ onSelect }) {
           <div style={S.whoTitle}>2–3 Guests</div>
           <div style={S.whoSub}>A group of friends, each choosing their own treatment</div>
         </button>
+      </div>
+      <div style={{ marginTop: 32 }}>
+        <button style={S.ghostBtn} onClick={onBack}>← Back</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Step –1: Location Selection ───────────────────────────────────────────────
+function StepLocation({ onSelect }) {
+  return (
+    <div style={{...S.stepWrap, textAlign: 'center'}}>
+      <h2 style={S.stepTitle}>Choose your location</h2>
+      <p style={S.stepSub}>Select the Vihara location you'd like to visit</p>
+      <div style={{ display: 'flex', gap: 20, justifyContent: 'center', marginTop: 36, flexWrap: 'wrap' }}>
+        {LOCATIONS.map(loc => (
+          <button key={loc.key} style={S.locationCard} onClick={() => onSelect(loc)}>
+            <div style={S.locationIcon}>✦</div>
+            <div style={S.locationName}>{loc.name}</div>
+            <div style={S.locationAddress}>{loc.address}</div>
+            {loc.key === 'dromana' && (
+              <div style={S.locationTag}>Inside HUM Yoga & Pilates</div>
+            )}
+          </button>
+        ))}
       </div>
     </div>
   )
@@ -1181,7 +1235,7 @@ function StepConfirmation({
   bookingRef, chosenServices, chosenAddons,
   selectedDate, selectedTime, customer, customer2,
   totalDuration, totalPrice, depositAmount,
-  isCouples, settings, onNewBooking,
+  isCouples, settings, selectedLocation, onNewBooking,
 }) {
   const endMin = selectedTime.hour * 60 + selectedTime.minute + totalDuration
   return (
@@ -1211,7 +1265,8 @@ function StepConfirmation({
 
       <p style={S.confirmAddress}>
         {settings.businessName}<br />
-        {settings.businessAddress}
+        {selectedLocation ? selectedLocation.address : settings.businessAddress}
+        {selectedLocation?.key === 'dromana' && <><br /><span style={{ fontStyle: 'italic' }}>Inside HUM Yoga & Pilates</span></>}
       </p>
       <button style={S.ghostBtn} onClick={onNewBooking}>Make another booking</button>
     </div>
@@ -1302,7 +1357,7 @@ function GroupBookingFlow({ soloCategories, staff, settings, onBack, onDone }) {
         if (supabase) {
           const clientId = await upsertClient(guestDetails[i])
           const { data: appt, error: aErr } = await supabase.from('appointments').insert({
-            location_id: '00000000-0000-0000-0000-000000000001',
+            location_id: selectedLocation?.id ?? '00000000-0000-0000-0000-000000000001',
             client_id: clientId, staff_id: staffId,
             start_time: startISO, end_time: endISO,
             duration_mins: svc.duration, total_price: svc.price,
@@ -1889,7 +1944,7 @@ function AddAppointmentModal({ date, hour, minute, preStaffId, staff, allService
         }
 
         const { data: appt, error: aErr } = await supabase.from('appointments').insert({
-          location_id: '00000000-0000-0000-0000-000000000001',
+          location_id: selectedLocation?.id ?? '00000000-0000-0000-0000-000000000001',
           client_id: clientId, staff_id: staffId || null,
           start_time: startISO, end_time: endISO,
           duration_mins: totalDuration, total_price: totalPrice,
@@ -2736,17 +2791,24 @@ const BORDER = '#E8DDD0'
 const S = {
   // Layout
   page: { minHeight: '100vh', background: CREAM, fontFamily: "'Cormorant Garamond', Georgia, serif", color: WALNUT },
-  header: { background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '20px 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  header: { background: WHITE, borderBottom: `1px solid ${BORDER}`, padding: '28px 40px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10 },
   logoWrap: {},
-  logo: { margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: 1, color: WALNUT },
-  logoSub: { margin: '2px 0 0', fontSize: 13, color: SAGE },
-  progressBar: { display: 'flex', gap: 6 },
-  progressDot: { width: 8, height: 8, borderRadius: '50%', background: BORDER },
+  logo: { margin: 0, fontSize: 21, fontWeight: 600, letterSpacing: 3, color: WALNUT, textTransform: 'uppercase', fontFamily: "'Cormorant Garamond', Georgia, serif" },
+  logoSub: { margin: 0, fontSize: 12, color: SAGE, letterSpacing: 1.5, fontStyle: 'italic' },
+  progressBar: { display: 'flex', gap: 7, marginTop: 4 },
+  progressDot: { width: 7, height: 7, borderRadius: '50%', background: BORDER },
   progressActive: { background: GOLD },
-  main: { maxWidth: 660, margin: '0 auto', padding: '40px 24px 120px' },
+  main: { maxWidth: 680, margin: '0 auto', padding: '48px 24px 120px' },
   stepWrap: {},
-  stepTitle: { fontSize: 30, fontWeight: 600, margin: '0 0 8px', color: WALNUT },
-  stepSub: { fontSize: 16, color: SAGE, margin: '0 0 28px' },
+  stepTitle: { fontSize: 34, fontWeight: 600, margin: '0 0 10px', color: WALNUT, lineHeight: 1.2 },
+  stepSub: { fontSize: 16, color: SAGE, margin: '0 0 32px', lineHeight: 1.6 },
+
+  // Location selection
+  locationCard: { flex: '1 1 220px', maxWidth: 260, padding: '40px 28px', border: `1px solid ${BORDER}`, borderRadius: 16, background: WHITE, cursor: 'pointer', textAlign: 'center', transition: 'border-color 0.2s, box-shadow 0.2s', fontFamily: "'Cormorant Garamond', Georgia, serif" },
+  locationIcon: { fontSize: 20, color: GOLD, marginBottom: 14, letterSpacing: 2 },
+  locationName: { fontSize: 22, fontWeight: 600, color: WALNUT, marginBottom: 10 },
+  locationAddress: { fontSize: 13, color: SAGE, lineHeight: 1.6, marginBottom: 8 },
+  locationTag: { fontSize: 11, color: GOLD, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 4, fontStyle: 'italic' },
 
   // Service categories
   catList: { display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 32 },
@@ -2763,10 +2825,10 @@ const S = {
   couplesBadge: { fontSize: 11, color: GOLD, marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
 
   // Who is this for
-  whoCard: { flex: '1 1 200px', maxWidth: 240, padding: '32px 24px', border: `2px solid ${BORDER}`, borderRadius: 16, background: WHITE, cursor: 'pointer', textAlign: 'center', transition: 'border-color 0.2s, background 0.2s' },
-  whoIcon: { fontSize: 22, color: GOLD, marginBottom: 12, letterSpacing: 4 },
-  whoTitle: { fontSize: 18, fontWeight: 600, color: WALNUT, marginBottom: 8 },
-  whoSub: { fontSize: 13, color: SAGE, lineHeight: 1.5 },
+  whoCard: { flex: '1 1 200px', maxWidth: 240, padding: '36px 24px', border: `1px solid ${BORDER}`, borderRadius: 16, background: WHITE, cursor: 'pointer', textAlign: 'center', transition: 'border-color 0.2s, box-shadow 0.2s', fontFamily: "'Cormorant Garamond', Georgia, serif" },
+  whoIcon: { fontSize: 20, color: GOLD, marginBottom: 14, letterSpacing: 4 },
+  whoTitle: { fontSize: 20, fontWeight: 600, color: WALNUT, marginBottom: 8 },
+  whoSub: { fontSize: 13, color: SAGE, lineHeight: 1.6 },
 
   // Add-ons
   addonList: { display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 32 },
