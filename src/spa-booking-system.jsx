@@ -183,7 +183,7 @@ const DEFAULT_STAFF = [
 ]
 
 const DEFAULT_SETTINGS = {
-  depositPercent: 100,
+  depositPercent: 50,
   couplesDepositPercent: 50,
   stripePublishableKey: '',
   cancellationPolicy: 'To secure your appointment, a deposit is required at the time of booking. Cancellations made within 48 hours of your appointment will forfeit the deposit. No-shows will be charged in full. Please contact us as soon as possible if you need to reschedule.',
@@ -1191,27 +1191,19 @@ function StepPayment({
       {/* Deposit/full pay choice */}
       <div style={S.depositBox}>
         <div style={S.depositTitle}>Payment required to confirm</div>
-        {isCouples ? (
-          <>
-            <div style={S.payChoiceRow}>
-              <label style={S.payChoice}>
-                <input type="radio" name="pay" value="deposit" checked={payChoice === 'deposit'} onChange={() => setPayChoice('deposit')} style={{ marginRight: 8 }} />
-                Pay 50% deposit — ${minDeposit}
-                <span style={{ display: 'block', fontSize: 12, color: '#8A7060', marginTop: 2 }}>Each guest pays the remaining 50% on the day</span>
-              </label>
-              <label style={S.payChoice}>
-                <input type="radio" name="pay" value="full" checked={payChoice === 'full'} onChange={() => setPayChoice('full')} style={{ marginRight: 8 }} />
-                Pay in full — ${totalPrice}
-              </label>
-            </div>
-          </>
-        ) : (
-          <div style={S.depositAmount}>${depositAmount} due now</div>
-        )}
+        <div style={S.payChoiceRow}>
+          <label style={S.payChoice}>
+            <input type="radio" name="pay" value="deposit" checked={payChoice === 'deposit'} onChange={() => setPayChoice('deposit')} style={{ marginRight: 8 }} />
+            Pay 50% deposit — ${minDeposit}
+            {isCouples && <span style={{ display: 'block', fontSize: 12, color: '#8A7060', marginTop: 2 }}>Each guest pays the remaining 50% on the day</span>}
+          </label>
+          <label style={S.payChoice}>
+            <input type="radio" name="pay" value="full" checked={payChoice === 'full'} onChange={() => setPayChoice('full')} style={{ marginRight: 8 }} />
+            Pay in full — ${totalPrice}
+          </label>
+        </div>
         <div style={S.depositNote}>
-          {isCouples
-            ? 'A minimum 50% deposit is required to secure a couples booking.'
-            : `Full payment of $${totalPrice} required to secure your booking.`}
+          A 50% deposit is required to secure your booking. The remaining balance is payable on the day.
         </div>
       </div>
 
