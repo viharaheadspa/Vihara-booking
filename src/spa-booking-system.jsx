@@ -284,6 +284,8 @@ export default function SpaBookingSystem() {
   const [customer2, setCustomer2] = useState({ firstName: '', lastName: '', email: '', mobile: '' })
   const [agreedToPolicy, setAgreedToPolicy] = useState(false)
   const [payChoice, setPayChoice] = useState('deposit') // 'deposit' | 'full'
+  const [appliedGiftCard, setAppliedGiftCard] = useState(null)
+  const [giftCardDiscount, setGiftCardDiscount] = useState(0)
   const [loading, setLoading] = useState(false)
   const [bookingRef, setBookingRef] = useState(null)
 
@@ -530,6 +532,8 @@ export default function SpaBookingSystem() {
     setCustomer2({ firstName: '', lastName: '', email: '', mobile: '' })
     setAgreedToPolicy(false)
     setPayChoice('deposit')
+    setAppliedGiftCard(null)
+    setGiftCardDiscount(0)
     setBookingRef(null)
   }
 
