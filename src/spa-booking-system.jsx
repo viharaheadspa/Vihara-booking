@@ -1495,9 +1495,9 @@ function StepConfirmation({
         }}>Before you arrive</p>
         {[
           { icon: '◷', text: 'We recommend arriving 10 minutes early to settle in before your treatment begins.' },
-          { icon: '✦', text: 'Wear comfortable, loose clothing — you'll want to feel relaxed from the moment you walk in.' },
+          { icon: '✦', text: "Wear comfortable, loose clothing — you'll want to feel relaxed from the moment you walk in." },
           { icon: '☕', text: 'Please avoid caffeine for a few hours before your appointment for the deepest nervous system reset.' },
-          { icon: '📋', text: 'Don't forget to fill out your consultation form — it helps us personalise your ritual.' },
+          { icon: '📋', text: "Don't forget to fill out your consultation form — it helps us personalise your ritual." },
         ].map(({ icon, text }, i) => (
           <div key={i} style={{ display: 'flex', gap: 14, marginBottom: i < 3 ? 14 : 0, alignItems: 'flex-start' }}>
             <span style={{ fontSize: 16, color: '#8B6F5E', marginTop: 2, flexShrink: 0 }}>{icon}</span>
