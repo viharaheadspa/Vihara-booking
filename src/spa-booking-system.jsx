@@ -1192,6 +1192,101 @@ function StepPayment({
     setGcError('')
   }
 
+  // ── Stripe ────────────────────────────────────────────────────────────────
+  const PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
+  const stripeRef = React.useRef(null)
+  const cardMountRef = React.useRef(null)
+  const cardElementRef = React.useRef(null)
+  const [payLoading, setPayLoading] = React.useState(false)
+  const [cardError, setCardError] = React.useState('')
+  const [stripeLoaded, setStripeLoaded] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!PUBLISHABLE_KEY) return
+    let mounted = true
+    import('@stripe/stripe-js').then(({ loadStripe }) => {
+      loadStripe(PUBLISHABLE_KEY).then(stripe => {
+        if (!mounted || !stripe || !cardMountRef.current) return
+        stripeRef.current = stripe
+        const elements = stripe.elements()
+        const card = elements.create('card', {
+          style: {
+            base: {
+              fontFamily: 'Lato, sans-serif',
+              fontSize: '16px',
+              color: '#3C2A1E',
+              '::placeholder': { color: '#B8A898' },
+            }
+          }
+        })
+        card.mount(cardMountRef.current)
+        cardElementRef.current = card
+        card.on('change', e => setCardError(e.error?.message || ''))
+        setStripeLoaded(true)
+      })
+    })
+    return () => {
+      mounted = false
+      if (cardElementRef.current) {
+        try { cardElementRef.current.destroy() } catch(e) {}
+      }
+    }
+  }, [PUBLISHABLE_KEY])
+
+  async function handleConfirm() {
+    const amountToPay = depositAmount
+
+    // Gift card covered everything — skip Stripe
+    if (amountToPay <= 0) {
+      onConfirm()
+      return
+    }
+
+    if (!PUBLISHABLE_KEY || !stripeRef.current || !cardElementRef.current) {
+      onConfirm()
+      return
+    }
+
+    setPayLoading(true)
+    setCardError('')
+
+    try {
+      const res = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: amountToPay,
+          description: `Vihara Head Spa – ${customer.firstName} ${customer.lastName}`,
+        })
+      })
+      const { clientSecret, error: piError } = await res.json()
+      if (piError) throw new Error(piError)
+
+      const { error: stripeError } = await stripeRef.current.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card: cardElementRef.current,
+          billing_details: {
+            name: `${customer.firstName} ${customer.lastName}`,
+            email: customer.email,
+            phone: customer.mobile || undefined,
+          }
+        }
+      })
+
+      if (stripeError) {
+        setCardError(stripeError.message)
+        setPayLoading(false)
+        return
+      }
+
+      // Payment succeeded — save the booking
+      onConfirm()
+    } catch(e) {
+      setCardError(e.message || 'Payment failed. Please try again.')
+      setPayLoading(false)
+    }
+  }
+
   return (
     <div style={S.stepWrap}>
       <h2 style={S.stepTitle}>Review & confirm</h2>
@@ -1298,24 +1393,39 @@ function StepPayment({
         )}
       </div>
 
-      {/* Stripe placeholder */}
-      <div style={S.stripeBox}>
-        {settings.stripePublishableKey ? (
-          <>
-            <div style={S.stripeLabel}>Secure card payment</div>
-            <div style={S.stripePlaceholder}>Stripe card input loads here</div>
-          </>
-        ) : (
-          <p style={S.stripeNote}>
-            ⚠️ Online payment not yet configured. Your booking will be confirmed and we'll collect payment at your appointment.
-          </p>
-        )}
-      </div>
+      {/* Stripe card input */}
+      {depositAmount > 0 && (
+        <div style={S.stripeBox}>
+          {PUBLISHABLE_KEY ? (
+            <>
+              <div style={S.stripeLabel}>Secure card payment</div>
+              <div ref={cardMountRef} style={{ padding: '12px 4px', minHeight: 44 }} />
+              {!stripeLoaded && (
+                <div style={{ fontSize: 13, color: '#9A8878', textAlign: 'center', padding: '8px 0' }}>Loading payment form…</div>
+              )}
+              {cardError && (
+                <div style={{ color: '#c0392b', fontSize: 13, marginTop: 8 }}>{cardError}</div>
+              )}
+              <div style={{ fontSize: 12, color: '#9A8878', marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>🔒</span> Payments secured by Stripe
+              </div>
+            </>
+          ) : (
+            <p style={S.stripeNote}>
+              ⚠️ Online payment not yet configured. Your booking will be confirmed and we'll collect payment at your appointment.
+            </p>
+          )}
+        </div>
+      )}
 
       <div style={S.btnRow}>
-        <button style={S.ghostBtn} onClick={onBack} disabled={loading}>Back</button>
-        <button style={S.primaryBtn} onClick={onConfirm} disabled={loading}>
-          {loading ? 'Confirming…' : `Confirm booking`}
+        <button style={S.ghostBtn} onClick={onBack} disabled={loading || payLoading}>Back</button>
+        <button
+          style={S.primaryBtn}
+          onClick={handleConfirm}
+          disabled={loading || payLoading || (depositAmount > 0 && PUBLISHABLE_KEY && !stripeLoaded)}
+        >
+          {(loading || payLoading) ? 'Processing…' : depositAmount > 0 ? `Pay $${depositAmount}` : 'Confirm booking'}
         </button>
       </div>
     </div>
