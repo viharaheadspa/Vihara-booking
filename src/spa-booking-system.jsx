@@ -1470,7 +1470,39 @@ function StepConfirmation({
         {selectedLocation ? selectedLocation.address : settings.businessAddress}
         {selectedLocation?.key === 'dromana' && <><br /><span style={{ fontStyle: 'italic' }}>Inside HUM Yoga & Pilates</span></>}
       </p>
-      <button style={S.ghostBtn} onClick={onNewBooking}>Make another booking</button>
+
+      {/* Before you arrive */}
+      <div style={{
+        margin: '32px auto 0',
+        maxWidth: 420,
+        textAlign: 'left',
+        background: '#F5F0EA',
+        borderRadius: 12,
+        padding: '24px 28px',
+        border: '1px solid #E8DFCF',
+      }}>
+        <p style={{
+          fontFamily: '"Cormorant Garamond", "Playfair Display", Georgia, serif',
+          fontSize: 18,
+          fontWeight: 600,
+          color: '#3C2A1E',
+          margin: '0 0 16px',
+          letterSpacing: '0.02em',
+        }}>Before you arrive</p>
+        {[
+          { icon: '◷', text: 'We recommend arriving 10 minutes early to settle in before your treatment begins.' },
+          { icon: '✦', text: 'Wear comfortable, loose clothing — you'll want to feel relaxed from the moment you walk in.' },
+          { icon: '☕', text: 'Please avoid caffeine for a few hours before your appointment for the deepest nervous system reset.' },
+          { icon: '📋', text: 'Don't forget to fill out your consultation form — it helps us personalise your ritual.' },
+        ].map(({ icon, text }, i) => (
+          <div key={i} style={{ display: 'flex', gap: 14, marginBottom: i < 3 ? 14 : 0, alignItems: 'flex-start' }}>
+            <span style={{ fontSize: 16, color: '#8B6F5E', marginTop: 2, flexShrink: 0 }}>{icon}</span>
+            <p style={{ margin: 0, fontSize: 14, color: '#5C4033', lineHeight: 1.6 }}>{text}</p>
+          </div>
+        ))}
+      </div>
+
+      <button style={{ ...S.ghostBtn, marginTop: 28 }} onClick={onNewBooking}>Make another booking</button>
     </div>
   )
 }
