@@ -1194,14 +1194,14 @@ function StepPayment({
 
   // ── Stripe ────────────────────────────────────────────────────────────────
   const PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
-  const stripeRef = React.useRef(null)
-  const cardMountRef = React.useRef(null)
-  const cardElementRef = React.useRef(null)
-  const [payLoading, setPayLoading] = React.useState(false)
-  const [cardError, setCardError] = React.useState('')
-  const [stripeLoaded, setStripeLoaded] = React.useState(false)
+  const stripeRef = useRef(null)
+  const cardMountRef = useRef(null)
+  const cardElementRef = useRef(null)
+  const [payLoading, setPayLoading] = useState(false)
+  const [cardError, setCardError] = useState('')
+  const [stripeLoaded, setStripeLoaded] = useState(false)
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!PUBLISHABLE_KEY) return
     let mounted = true
     import('@stripe/stripe-js').then(({ loadStripe }) => {
