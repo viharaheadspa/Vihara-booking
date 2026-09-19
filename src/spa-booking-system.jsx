@@ -1158,9 +1158,9 @@ function StepPayment({
   const endMin = selectedTime.hour * 60 + selectedTime.minute + totalDuration
   const effectiveTotal = Math.max(0, totalPrice - giftCardDiscount)
   const minDeposit = Math.round(effectiveTotal * (isCouples ? settings.couplesDepositPercent : settings.depositPercent) / 100)
-  const [gcInput, setGcInput] = React.useState('')
-  const [gcError, setGcError] = React.useState('')
-  const [gcLoading, setGcLoading] = React.useState(false)
+  const [gcInput, setGcInput] = useState('')
+  const [gcError, setGcError] = useState('')
+  const [gcLoading, setGcLoading] = useState(false)
 
   async function applyGiftCard() {
     const code = gcInput.trim().toUpperCase()
@@ -1946,11 +1946,11 @@ function AdminPinEntry({ correctPin, onSuccess }) {
 
 // ── Admin: Gift Cards ─────────────────────────────────────────────────────────
 function AdminGiftCards() {
-  const [cards, setCards] = React.useState([])
-  const [loading, setLoading] = React.useState(true)
-  const [showForm, setShowForm] = React.useState(false)
-  const [saving, setSaving] = React.useState(false)
-  const [form, setForm] = React.useState({ recipient_name: '', recipient_email: '', purchaser_name: '', amount: '', notes: '', expires_at: '' })
+  const [cards, setCards] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({ recipient_name: '', recipient_email: '', purchaser_name: '', amount: '', notes: '', expires_at: '' })
 
   async function getSupabase() {
     const { createClient } = await import('@supabase/supabase-js')
@@ -1968,7 +1968,7 @@ function AdminGiftCards() {
     setLoading(false)
   }
 
-  React.useEffect(() => { loadCards() }, [])
+  useEffect(() => { loadCards() }, [])
 
   function generateCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
