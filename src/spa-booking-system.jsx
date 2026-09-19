@@ -653,7 +653,7 @@ export default function SpaBookingSystem() {
             customer2={customer2}
             setCustomer2={setCustomer2}
             onContinue={() => {
-              const ok = customer2.firstName && customer2.lastName && customer2.email && customer2.mobile
+              const ok = customer2.firstName && customer2.lastName
               if (ok) setStep(6)
             }}
             onBack={() => setStep(4)}
@@ -1105,7 +1105,7 @@ function StepDetails({ customer, setCustomer, agreedToPolicy, setAgreedToPolicy,
 // ── Step 5: Partner Details (couples only) ────────────────────────────────────
 function StepPartnerDetails({ customer2, setCustomer2, onContinue, onBack }) {
   const update = (field) => (e) => setCustomer2(p => ({...p, [field]: e.target.value}))
-  const canContinue = customer2.firstName && customer2.lastName && customer2.email && customer2.mobile
+  const canContinue = customer2.firstName && customer2.lastName
 
   return (
     <div style={S.stepWrap}>
@@ -1123,11 +1123,11 @@ function StepPartnerDetails({ customer2, setCustomer2, onContinue, onBack }) {
         </div>
       </div>
       <div style={S.formField}>
-        <label style={S.fieldLabel}>Email *</label>
+        <label style={S.fieldLabel}>Email <span style={{fontWeight:400,color:'#8B6F5E'}}>(optional)</span></label>
         <input style={S.input} type="email" value={customer2.email} onChange={update('email')} placeholder="their@email.com" />
       </div>
       <div style={S.formField}>
-        <label style={S.fieldLabel}>Mobile *</label>
+        <label style={S.fieldLabel}>Mobile <span style={{fontWeight:400,color:'#8B6F5E'}}>(optional)</span></label>
         <input style={S.input} type="tel" value={customer2.mobile} onChange={update('mobile')} placeholder="04XX XXX XXX" />
       </div>
 
