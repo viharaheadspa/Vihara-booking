@@ -150,6 +150,18 @@ export default function SpaBookingSystem() {
   // Admin tab + auth
   const [adminTab, setAdminTab] = useState('dashboard')
   const [adminAuthed, setAdminAuthed] = useState(false)
+  const [adminChecking, setAdminChecking] = useState(isAdmin)
+
+  // Admin: stay logged in on this device until "Log out"
+  useEffect(() => {
+    if (!isAdmin || !supabase) { setAdminChecking(false); return }
+    supabase.auth.getSession().then(({ data }) => {
+      setAdminAuthed(!!data.session)
+      setAdminChecking(false)
+    })
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => setAdminAuthed(!!session))
+    return () => sub.subscription.unsubscribe()
+  }, [])
 
   // Persist changes
   useEffect(() => { if (isAdmin) saveData('categories', categories) }, [categories])
@@ -249,30 +261,22 @@ export default function SpaBookingSystem() {
     const fetchSlots = async () => {
       const dayStr = selectedDate.toLocaleDateString('en-CA')
       let candidates = eligibleStaff.map(s => s.id).filter(id => isRostered(id, selectedLocation?.id, dayStr))
-      if (supabase && candidates.length) {
-        const { data: off } = await supabase.from('staff_days_off').select('staff_id').eq('off_date', dayStr)
-        const offIds = new Set((off || []).map(o => o.staff_id))
-        candidates = candidates.filter(id => !offIds.has(id))
-      }
-      const busyByStaff = {}
-      if (supabase && candidates.length) {
-        const dateStr = selectedDate.toLocaleDateString('en-CA') // YYYY-MM-DD in local time
-        const dayStart = new Date(`${dateStr}T00:00:00${melOffset(dateStr)}`).toISOString()
-        const dayEnd   = new Date(`${dateStr}T23:59:59${melOffset(dateStr)}`).toISOString()
-        // Therapists work across both locations, so check all their bookings
-        const { data } = await supabase
-          .from('appointments')
-          .select('staff_id, start_time, end_time')
-          .in('staff_id', candidates)
-          .lt('start_time', dayEnd)
-          .gt('end_time', dayStart)
-          .not('status', 'in', '("cancelled","no_show")')
-        for (const b of data || []) {
-          const s = new Date(b.start_time), e = new Date(b.end_time)
-          ;(busyByStaff[b.staff_id] = busyByStaff[b.staff_id] || []).push({
-            start: s.getHours() * 60 + s.getMinutes(),
-            end:   e.getHours() * 60 + e.getMinutes(),
+      let busyByStaff = {}
+      if (candidates.length) {
+        try {
+          const res = await fetch('/api/availability', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: dayStr, staffIds: candidates }),
           })
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error)
+          busyByStaff = data.busy || {}
+          const offIds = new Set(data.off || [])
+          candidates = candidates.filter(id => !offIds.has(id))
+        } catch (e) {
+          // Can't check availability — show no times rather than risk a double booking
+          console.error('Availability error:', e)
+          candidates = []
         }
       }
       // Don't offer times that have already passed (allow 30 minutes' notice)
@@ -374,8 +378,9 @@ export default function SpaBookingSystem() {
   }
 
   if (isAdmin) {
+    if (adminChecking) return null
     if (!adminAuthed) {
-      return <AdminPinEntry correctPin={settings.adminPin || '1234'} onSuccess={() => setAdminAuthed(true)} />
+      return <AdminLogin onSuccess={() => setAdminAuthed(true)} />
     }
     return (
       <AdminPanel
@@ -384,7 +389,7 @@ export default function SpaBookingSystem() {
         staff={staff} setStaff={setStaff}
         settings={settings} setSettings={setSettings}
         adminTab={adminTab} setAdminTab={setAdminTab}
-        onLogout={() => setAdminAuthed(false)}
+        onLogout={async () => { await supabase?.auth.signOut(); setAdminAuthed(false) }}
       />
     )
   }
@@ -614,6 +619,11 @@ function StepLocation({ onSelect }) {
 
 // ── Step 1: Service Selection ─────────────────────────────────────────────────
 function StepServices({ categories, selectedServices, toggleService, expandedCats, toggleCat, onContinue, onBack }) {
+  const [openDesc, setOpenDesc] = useState(() => new Set())
+  const toggleDesc = (e, id) => {
+    e.preventDefault(); e.stopPropagation()
+    setOpenDesc(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
   return (
     <div style={S.stepWrap}>
       <h2 style={S.stepTitle}>Select a service</h2>
@@ -642,6 +652,18 @@ function StepServices({ categories, selectedServices, toggleService, expandedCat
                         <div style={S.svcName}>{svc.name}</div>
                         <div style={S.svcMeta}>{fmt(svc.duration)} · ${svc.price}</div>
                         {svc.couples && <div style={S.couplesBadge}>For two guests</div>}
+                        {svc.description && (
+                          <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.55, color: '#6B5444' }}>
+                            <span style={openDesc.has(svc.id) ? {} : {
+                              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                            }}>{svc.description}</span>
+                            <button type="button" onClick={(e) => toggleDesc(e, svc.id)}
+                              style={{ background: 'none', border: 'none', padding: 0, marginTop: 4, color: '#8A6A4A',
+                                fontSize: 13, fontFamily: 'inherit', textDecoration: 'underline', cursor: 'pointer' }}>
+                              {openDesc.has(svc.id) ? 'Show less' : 'Read more'}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </label>
                   )
@@ -1006,21 +1028,14 @@ function StepPayment({
     setGcLoading(true)
     setGcError('')
     try {
-      const { createClient } = await import('@supabase/supabase-js')
-      const sb = import.meta.env.VITE_SUPABASE_URL
-        ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
-        : null
-      if (!sb) { setGcError('Gift cards not available offline.'); setGcLoading(false); return }
-      const { data, error } = await sb.from('gift_cards')
-        .select('id, code, remaining, expires_at, is_active')
-        .eq('code', code)
-        .maybeSingle()
-      if (error || !data) { setGcError('Code not found.'); setGcLoading(false); return }
-      if (!data.is_active) { setGcError('This gift card has already been used or voided.'); setGcLoading(false); return }
-      if (data.expires_at && new Date(data.expires_at) < new Date()) { setGcError('This gift card has expired.'); setGcLoading(false); return }
-      if (data.remaining <= 0) { setGcError('No remaining balance on this gift card.'); setGcLoading(false); return }
+      const res = await fetch('/api/gift-card', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setGcError(data.error || 'Code not found.'); setGcLoading(false); return }
       const discount = Math.min(data.remaining, totalPrice)
-      setAppliedGiftCard({ id: data.id, code: data.code, remaining: data.remaining })
+      setAppliedGiftCard({ code: data.code, remaining: data.remaining })
       setGiftCardDiscount(discount)
       setGcInput('')
       setGcError('')
@@ -1799,6 +1814,37 @@ function PaymentPage({ payRef }) {
 }
 
 // ── Admin PIN Entry ───────────────────────────────────────────────────────────
+// Staff login (email + password, set up in Supabase → Authentication → Users)
+function AdminLogin({ onSuccess }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const login = async () => {
+    if (!supabase) { setError('Booking database is not connected.'); return }
+    setBusy(true); setError('')
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+    setBusy(false)
+    if (error) { setError('Email or password is incorrect.'); setPassword(''); return }
+    onSuccess()
+  }
+  return (
+    <div style={{ minHeight: '100vh', background: WALNUT, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond', Georgia, serif" }}>
+      <div style={{ background: WHITE, borderRadius: 16, padding: '48px 40px', width: 340, textAlign: 'center', boxShadow: '0 8px 40px rgba(0,0,0,0.18)' }}>
+        <div style={{ fontSize: 24, fontWeight: 700, color: WALNUT, marginBottom: 6 }}>Vihara Admin</div>
+        <div style={{ fontSize: 14, color: SAGE, marginBottom: 28 }}>Staff login</div>
+        <input type="email" autoComplete="username" placeholder="Email" value={email}
+          onChange={e => setEmail(e.target.value)} style={{ ...S.input, marginBottom: 12 }} autoFocus />
+        <input type="password" autoComplete="current-password" placeholder="Password" value={password}
+          onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && login()}
+          style={{ ...S.input, marginBottom: 16 }} />
+        {error && <div style={{ color: '#c0392b', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+        <button style={{ ...S.primaryBtn, width: '100%' }} onClick={login} disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</button>
+      </div>
+    </div>
+  )
+}
+
 function AdminPinEntry({ correctPin, onSuccess }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState(false)
@@ -1939,10 +1985,7 @@ function AdminGiftCards() {
   const [form, setForm] = useState({ recipient_name: '', recipient_email: '', purchaser_name: '', amount: '', notes: '', expires_at: '' })
 
   async function getSupabase() {
-    const { createClient } = await import('@supabase/supabase-js')
-    return import.meta.env.VITE_SUPABASE_URL
-      ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
-      : null
+    return supabase
   }
 
   async function loadCards() {
@@ -2101,7 +2144,7 @@ function AdminPanel({ categories, setCategories, allAddons, setAllAddons, staff,
         ))}
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <a href="/" style={S.adminBack}>← Back to booking</a>
-          <button style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: '4px 0' }} onClick={onLogout}>Lock</button>
+          <button style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: '4px 0' }} onClick={onLogout}>Log out</button>
         </div>
       </aside>
       <main style={S.adminMain}>
