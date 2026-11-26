@@ -1,10 +1,16 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { DEFAULT_ADDONS, DEFAULT_CATEGORIES, DEFAULT_STAFF, DEFAULT_SETTINGS, hoursFor, offeredAt, isRostered, worksAt } from './catalogue.js'
+import { melOffset } from './time.js'
 
 // ── Supabase ──────────────────────────────────────────────────────────────────
 const supabase = import.meta.env.VITE_SUPABASE_URL
   ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
   : null
+
+// If a client pays but their browser closes before the booking is saved,
+// we remember the payment here and finish saving it next time the page loads.
+const PENDING_PAYMENT_KEY = 'vihara-pending-payment'
 
 // ── Local storage persistence ─────────────────────────────────────────────────
 const STORAGE_KEY = 'spa-data-v3'
@@ -24,175 +30,6 @@ function saveData(key, value) {
     raw[key] = value
     localStorage.setItem(STORAGE_KEY, JSON.stringify(raw))
   } catch {}
-}
-
-// ── Default data ──────────────────────────────────────────────────────────────
-const DEFAULT_ADDONS = [
-  { id: 'ao1', name: 'Quiet Touch', duration: 30, price: 67 },
-  { id: 'ao2', name: 'Blow Dry', duration: 30, price: 65 },
-  { id: 'ao3', name: 'Sheet Face Mask', duration: 0, price: 30 },
-  { id: 'ao4', name: 'Energy Realignment Ritual', duration: 15, price: 49 },
-  { id: 'ao5', name: 'Facial Massage', duration: 15, price: 49 },
-  { id: 'ao6', name: 'Hand and Arm Massage', duration: 15, price: 35 },
-]
-
-const DEFAULT_CATEGORIES = [
-  {
-    id: 'cat1',
-    name: 'Japanese Head Spa',
-    services: [
-      {
-        id: 's1', name: 'The Soul Spa', duration: 135, price: 360,
-        description: 'Our most expansive head spa experience designed to nurture the body, calm the mind, and restore balance and wellbeing. Includes guided meditation, scalp exfoliation and cleanse, therapeutic scalp and décolletage massage, hand and arm massage, chest exfoliation, third-eye oil ritual, herbal-infused water pours, aromatherapy, steam hair treatment, signature water therapy, sound healing, chakra crystal placement and energy work. Concludes with a personalised blow-dry finish.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: ['ao1','ao2','ao3','ao4','ao5'],
-      },
-      {
-        id: 's2', name: 'The Vihara Signature Journey', duration: 90, price: 252,
-        description: 'A 90-minute journey of deep relaxation designed to calm the nervous system, ease tension and support scalp and hair health. Includes guided meditation, scalp exfoliation and cleanse, therapeutic scalp and décolletage massage, hand and arm massage, third-eye oil ritual, herbal-infused water pours, aromatherapy, signature water therapy and sound healing. Concludes with a personalised blow-dry finish.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: ['ao1','ao2','ao3','ao4','ao5'],
-      },
-      {
-        id: 's3', name: 'Enlighten Ritual Head Spa', duration: 45, price: 159,
-        description: 'A 45-minute introduction to the Vihara experience designed to calm the nervous system and restore balance. Includes guided meditation, scalp exfoliation and cleanse, therapeutic scalp and décolletage massage, third-eye oil ritual, herbal-infused water pours, aromatherapy and signature water therapy. Concludes with nourishing hair products, towel drying and gentle detangling.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: ['ao1','ao2','ao3','ao4'],
-      },
-    ],
-  },
-  {
-    id: 'cat2',
-    name: 'For Him',
-    services: [
-      {
-        id: 's4', name: 'His Grounded Journey', duration: 75, price: 220,
-        description: 'A focused 75-minute head spa for men who are tired, tense and need proper time to switch off. Includes deep scalp and hair cleanse, gentle scalp exfoliation, warm water therapy, slow targeted massage through the head, neck and shoulders, grounding chest scrub, beard cleanse, and hand and arm massage. For the man who doesn\'t need another job to do — he just needs to stop for a while.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: ['ao2'],
-      },
-      {
-        id: 's5', name: 'The Reset For Him', duration: 45, price: 156,
-        description: 'A focused 45-minute head spa to clear the head, calm the body and give the scalp a proper reset. Includes deep scalp and hair cleanse, gentle scalp exfoliation, warm water therapy and slow targeted massage through the head, neck and shoulders. Simple, grounding and effective. For the man who doesn\'t need more to do — he just needs to stop for a while.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: ['ao2'],
-      },
-    ],
-  },
-  {
-    id: 'cat3',
-    name: 'Reiki',
-    services: [
-      {
-        id: 's6', name: 'Initial Reiki Session', duration: 60, price: 159,
-        description: 'A deeper journey into energetic restoration and nervous system support. This extended session moves through each energy centre with intention, releasing stored tension and emotional stagnation while gently guiding the body back into alignment. Through intuitive energy work, grounding rituals and intentional stillness, we create space for clarity, reconnection and inner steadiness. Ideal during periods of burnout, transition or emotional fatigue.',
-        staff: ['30000000-0000-0000-0000-000000000001'], addons: [],
-      },
-      {
-        id: 's7', name: 'Return Reiki Session', duration: 45, price: 110,
-        description: 'A focused reset to bring your body and energy back into balance. Using gentle, intuitive energy work with light touch, this session supports the release of built-up stress, emotional tension and energetic heaviness. As your nervous system softens, space is created for clarity, grounding and calm. You\'ll leave feeling lighter, clearer and more centred.',
-        staff: ['30000000-0000-0000-0000-000000000001'], addons: [],
-      },
-    ],
-  },
-  {
-    id: 'cat4',
-    name: 'Sensory Rituals',
-    services: [
-      {
-        id: 's8', name: 'Quiet Touch', duration: 60, price: 159,
-        description: 'A waterless ritual designed to provide deep emotional rest and nervous system support through gentle, intentional touch. Using soothing sensory tools, your practitioner creates soft tracing patterns across the back, arms, chest and scalp, encouraging the body to relax and the mind to slow. Inspired by the comforting feeling of having your hair played with as a child, this treatment evokes safety, calm and being deeply cared for.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: ['ao6'],
-      },
-      {
-        id: 's9', name: 'Sound Alignment', duration: 60, price: 159,
-        description: 'A calming, full-body experience designed to support deep relaxation and restore balance to the nervous system. Through therapeutic sound and subtle energetic support, the body is invited to release tension, settle the mind, and gently reset after periods of stress or mental fatigue. Each session is intuitive and responsive, meeting you where you are.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: [],
-      },
-      {
-        id: 's10', name: 'Nervous System Reset', duration: 60, price: 159,
-        description: 'A nurturing ritual designed to support deep rest, regulation and reconnection. Through gentle body rocking, rhythmic movement, supportive holding techniques and intentional touch, this treatment encourages the body to release tension and settle into safety and calm. Also includes sensory touch elements, chakra crystal placement and gentle energy work.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: ['ao6'],
-      },
-      {
-        id: 's11', name: 'Cloud Ritual', duration: 45, price: 89,
-        description: 'A gentle 45-minute escape into our sensory cloud chairs. Weighted blanket, eye mask and a soothing head massage blend with slow hair play to soften your mind and unravel tension. The perfect express ritual when your nervous system needs a moment.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: [],
-      },
-      {
-        id: 's12', name: 'Cloud Ritual (30min)', duration: 30, price: 69,
-        description: 'A gentle 30-minute escape into our sensory cloud chairs — weighted blanket, eye mask and soothing sound to help you soften and unwind.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: [],
-      },
-    ],
-  },
-  {
-    id: 'cat5',
-    name: 'Pregnancy & Postpartum',
-    services: [
-      {
-        id: 's13', name: 'Sacred Mother To Be Retreat', duration: 135, price: 360,
-        description: 'A 2-hour 15-minute deeply calming retreat created especially for mothers, available as a single or double treatment experience. Warm cascading water, slow rhythmic scalp massage and nourishing Oway treatments melt away tension through the scalp, neck and shoulders. Elevated with a soothing herbal foot bath, facial massage and a 30-minute Quiet Touch ritual. Concludes with a Vihara signature blow-dry.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000003'], addons: ['ao3','ao4'],
-      },
-      {
-        id: 's14', name: 'Expecting Mother to Be Ritual', duration: 75, price: 220,
-        description: 'Created especially for mothers-to-be, this nurturing head spa ritual offers a moment of deep calm during pregnancy. Begins with our Enlighten Head Spa — warm cascading water, slow rhythmic scalp massage and nourishing Oway treatments. Gentle neck stretches, soothing massage techniques and carefully selected scalp tools encourage deep relaxation. Concludes with a Vihara signature blow-dry.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000003'], addons: ['ao3'],
-      },
-      {
-        id: 's15', name: 'Postpartum Cocoon', duration: 120, price: 344,
-        description: 'A deeply nurturing 2-hour postpartum experience designed to cocoon mothers in care during the tender transition into motherhood. Each session is tailored to the mother\'s emotional, physical and nervous system needs on the day — blending warm water therapy, grounding scalp massage, hair and facial rituals, nervous system support, reiki, baby-safe sound healing and finishing styling. Babies are warmly welcomed throughout.',
-        staff: ['30000000-0000-0000-0000-000000000002'], addons: ['ao3','ao4'],
-      },
-      {
-        id: 's16', name: 'Somatic Birth Debrief', duration: 90, price: 252,
-        description: 'A 90-minute deeply held experience for mothers who feel like parts of their birth are still living within their body. Blends somatic birth debriefing with nurturing touch-based therapies — may include somatic birth processing, nervous system regulation, grounding touch therapy, scalp massage, reiki, sound healing, quiet rest and integration. A space to soften, process and finally exhale after birth.',
-        staff: ['30000000-0000-0000-0000-000000000002'], addons: [],
-      },
-    ],
-  },
-  {
-    id: 'cat6',
-    name: 'For Two',
-    couples: true,
-    services: [
-      {
-        id: 'cs1', name: 'The Soul Spa For Two', duration: 135, price: 720, couples: true,
-        description: 'Our most expansive head spa experience, shared side by side with someone special. Each guest receives their own dedicated therapist and the full Soul Spa journey — guided meditation, scalp exfoliation and cleanse, therapeutic scalp and décolletage massage, hand and arm massage, chest exfoliation, third-eye oil ritual, herbal-infused water pours, aromatherapy, steam hair treatment, signature water therapy, sound healing, chakra crystal placement and energy work. Concludes with a personalised blow-dry finish.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: [],
-      },
-      {
-        id: 'cs2', name: 'The Vihara Signature Journey For Two', duration: 90, price: 504, couples: true,
-        description: 'A 90-minute journey of deep relaxation, shared with someone you love. Each guest receives their own dedicated therapist and the full Signature Journey — guided meditation, scalp exfoliation and cleanse, therapeutic scalp and décolletage massage, hand and arm massage, third-eye oil ritual, herbal-infused water pours, aromatherapy, signature water therapy and sound healing. Concludes with a personalised blow-dry finish.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: [],
-      },
-      {
-        id: 'cs3', name: 'The Enlighten Ritual For Two', duration: 45, price: 318, couples: true,
-        description: 'A 45-minute introduction to the Vihara experience, shared with someone special. Each guest receives their own dedicated therapist and the full Enlighten Ritual — guided meditation, scalp exfoliation and cleanse, therapeutic scalp and décolletage massage, third-eye oil ritual, herbal-infused water pours, aromatherapy and signature water therapy. Concludes with nourishing hair products, towel drying and gentle detangling.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: [],
-      },
-      {
-        id: 'cs4', name: 'Quiet Touch For Two', duration: 60, price: 318, couples: true,
-        description: 'A waterless ritual shared side by side — each guest receives their own dedicated therapist and the full Quiet Touch experience. Deep emotional rest and nervous system support through gentle, intentional touch. Using soothing sensory tools, your practitioner creates soft tracing patterns across the back, arms, chest and scalp, encouraging the body to relax and the mind to slow.',
-        staff: ['30000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003'], addons: [],
-      },
-    ],
-  },
-]
-
-const DEFAULT_STAFF = [
-  { id: '30000000-0000-0000-0000-000000000001', name: 'Bee', role: 'Head Spa Therapist & Reiki Practitioner' },
-  { id: '30000000-0000-0000-0000-000000000002', name: 'Jesse', role: 'Postpartum Practitioner & Head Spa Therapist' },
-  { id: '30000000-0000-0000-0000-000000000003', name: 'Sianne', role: 'Director & Head Spa Therapist' },
-]
-
-const DEFAULT_SETTINGS = {
-  depositPercent: 50,
-  couplesDepositPercent: 50,
-  stripePublishableKey: '',
-  cancellationPolicy: 'To secure your appointment, a deposit is required at the time of booking. Cancellations made within 48 hours of your appointment will forfeit the deposit. No-shows will be charged in full. Please contact us as soon as possible if you need to reschedule.',
-  businessHoursStart: 9,
-  businessHoursEnd: 18,
-  slotInterval: 15,
-  businessName: 'Vihara Head Spa & Blow Dry Lounge',
-  businessAddress: '1 Chandler Street, Parkdale VIC 3195',
-  adminPin: '1234',
 }
 
 // ── Locations ─────────────────────────────────────────────────────────────────
@@ -230,11 +67,32 @@ const fmtTime = (h, m = 0) => {
 const fmtDate = (date) =>
   date.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })
 
+// Shows $148.50 rather than $148.5, and $150 rather than $150.00
+const money = (n) => Number.isInteger(Number(n)) ? String(n) : Number(n).toFixed(2)
+
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
 function getDaysInMonth(year, month) {
   return new Date(year, month + 1, 0).getDate()
+}
+
+// Times when enough of the candidate therapists are free.
+// busyByStaff: { staffId: [{start, end}] } in minutes past midnight.
+// Each slot lists the free therapists, preferred one first.
+function generateStaffSlots({ open, close, interval, duration, busyByStaff, candidates, preferred, need, earliest = 0 }) {
+  const slots = []
+  for (let cur = open * 60; cur + duration <= close * 60; cur += interval) {
+    if (cur < earliest) continue
+    const end = cur + duration
+    let free = candidates.filter(id => !(busyByStaff[id] || []).some(b => cur < b.end && end > b.start))
+    if (preferred) {
+      if (!free.includes(preferred)) continue
+      free = [preferred, ...free.filter(id => id !== preferred)]
+    }
+    if (free.length >= need) slots.push({ hour: Math.floor(cur / 60), minute: cur % 60, freeStaff: free })
+  }
+  return slots
 }
 
 function generateSlots(settings, totalDuration, existingBookings = []) {
@@ -258,10 +116,10 @@ export default function SpaBookingSystem() {
   const payRef  = window.location.pathname.startsWith('/pay/') ? window.location.pathname.replace('/pay/', '').trim().toUpperCase() : null
 
   // Persisted data
-  const [categories, setCategories] = useState(() => loadData('categories', DEFAULT_CATEGORIES))
-  const [allAddons, setAllAddons] = useState(() => loadData('addons', DEFAULT_ADDONS))
-  const [staff, setStaff] = useState(() => loadData('staff', DEFAULT_STAFF))
-  const [settings, setSettings] = useState(() => loadData('settings', DEFAULT_SETTINGS))
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
+  const [allAddons, setAllAddons] = useState(DEFAULT_ADDONS)
+  const [staff, setStaff] = useState(DEFAULT_STAFF)
+  const [settings, setSettings] = useState(() => isAdmin ? loadData('settings', DEFAULT_SETTINGS) : DEFAULT_SETTINGS)
 
   // Location selection (pre-booking)
   const [selectedLocation, setSelectedLocation] = useState(null) // null | LOCATIONS[n]
@@ -294,10 +152,28 @@ export default function SpaBookingSystem() {
   const [adminAuthed, setAdminAuthed] = useState(false)
 
   // Persist changes
-  useEffect(() => { saveData('categories', categories) }, [categories])
-  useEffect(() => { saveData('addons', allAddons) }, [allAddons])
-  useEffect(() => { saveData('staff', staff) }, [staff])
-  useEffect(() => { saveData('settings', settings) }, [settings])
+  useEffect(() => { if (isAdmin) saveData('categories', categories) }, [categories])
+  useEffect(() => { if (isAdmin) saveData('addons', allAddons) }, [allAddons])
+  useEffect(() => { if (isAdmin) saveData('staff', staff) }, [staff])
+  useEffect(() => { if (isAdmin) saveData('settings', settings) }, [settings])
+
+  // Finish saving any booking whose payment went through but wasn't saved
+  useEffect(() => {
+    if (isAdmin) return
+    let pending = null
+    try { pending = localStorage.getItem(PENDING_PAYMENT_KEY) } catch {}
+    if (!pending) return
+    fetch('/api/confirm-booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paymentIntentId: pending }),
+    }).then(r => {
+      // Saved, or the payment never went through — either way, stop retrying
+      if (r.ok || r.status === 400 || r.status === 402) {
+        try { localStorage.removeItem(PENDING_PAYMENT_KEY) } catch {}
+      }
+    }).catch(() => {})
+  }, [])
 
   // Derived values
   const allServices = useMemo(() => categories.flatMap(c => c.services), [categories])
@@ -315,10 +191,15 @@ export default function SpaBookingSystem() {
   const isCouples = bookingFor === 'couple'
 
   const visibleCategories = useMemo(() => {
-    if (bookingFor === 'couple') return categories.filter(c => c.couples)
-    if (bookingFor === 'solo') return categories.filter(c => !c.couples)
-    return categories
-  }, [categories, bookingFor])
+    let cats = categories
+    if (bookingFor === 'couple') cats = cats.filter(c => c.couples)
+    if (bookingFor === 'solo') cats = cats.filter(c => !c.couples)
+    // Only show treatments offered at the chosen location; hide empty categories
+    const locId = selectedLocation?.id
+    return cats
+      .map(c => ({ ...c, services: c.services.filter(s => offeredAt(s, locId)) }))
+      .filter(c => c.services.length > 0)
+  }, [categories, bookingFor, selectedLocation])
 
   const totalDuration = useMemo(
     () => chosenServices.reduce((acc, s) => acc + s.duration, 0) +
@@ -336,19 +217,20 @@ export default function SpaBookingSystem() {
     const effectiveTotal = Math.max(0, totalPrice - giftCardDiscount)
     if (payChoice === 'full') return effectiveTotal
     const pct = isCouples ? settings.couplesDepositPercent : settings.depositPercent
-    return Math.round(effectiveTotal * pct / 100)
+    return Math.round(effectiveTotal * pct) / 100
   }, [totalPrice, isCouples, settings, payChoice, giftCardDiscount])
 
   // Eligible staff = staff who can perform ALL selected services
   const eligibleStaff = useMemo(() => {
-    if (chosenServices.length === 0) return staff
+    const here = staff.filter(s => worksAt(s.id, selectedLocation?.id))
+    if (chosenServices.length === 0) return here
     const eligible = new Set(chosenServices[0].staff || [])
     chosenServices.slice(1).forEach(s => {
       const sSet = new Set(s.staff || [])
       for (const id of [...eligible]) { if (!sSet.has(id)) eligible.delete(id) }
     })
-    return staff.filter(s => eligible.has(s.id))
-  }, [chosenServices, staff])
+    return here.filter(s => eligible.has(s.id))
+  }, [chosenServices, staff, selectedLocation])
 
   // Add-ons relevant to selected services (union)
   const relevantAddons = useMemo(() => {
@@ -360,43 +242,56 @@ export default function SpaBookingSystem() {
   // Load time slots when date or staff changes
   useEffect(() => {
     if (!selectedDate) { setTimeSlots([]); return }
+    const hours = hoursFor(selectedLocation?.id, selectedDate.getDay())
+    if (!hours) { setTimeSlots([]); return }
     let cancelled = false
     setLoading(true)
     const fetchSlots = async () => {
-      let existingBookings = []
-      if (supabase) {
-        // Query appointments table using timestamptz range for the selected date (AEST)
+      const dayStr = selectedDate.toLocaleDateString('en-CA')
+      let candidates = eligibleStaff.map(s => s.id).filter(id => isRostered(id, selectedLocation?.id, dayStr))
+      if (supabase && candidates.length) {
+        const { data: off } = await supabase.from('staff_days_off').select('staff_id').eq('off_date', dayStr)
+        const offIds = new Set((off || []).map(o => o.staff_id))
+        candidates = candidates.filter(id => !offIds.has(id))
+      }
+      const busyByStaff = {}
+      if (supabase && candidates.length) {
         const dateStr = selectedDate.toLocaleDateString('en-CA') // YYYY-MM-DD in local time
-        const dayStart = new Date(`${dateStr}T00:00:00+10:00`).toISOString()
-        const dayEnd   = new Date(`${dateStr}T23:59:59+10:00`).toISOString()
-        let q = supabase
+        const dayStart = new Date(`${dateStr}T00:00:00${melOffset(dateStr)}`).toISOString()
+        const dayEnd   = new Date(`${dateStr}T23:59:59${melOffset(dateStr)}`).toISOString()
+        // Therapists work across both locations, so check all their bookings
+        const { data } = await supabase
           .from('appointments')
-          .select('start_time, end_time')
-          .gte('start_time', dayStart)
-          .lte('start_time', dayEnd)
+          .select('staff_id, start_time, end_time')
+          .in('staff_id', candidates)
+          .lt('start_time', dayEnd)
+          .gt('end_time', dayStart)
           .not('status', 'in', '("cancelled","no_show")')
-        if (selectedStaff && selectedStaff !== 'no-preference') {
-          q = q.eq('staff_id', selectedStaff)
-        }
-        const { data } = await q
-        if (data) {
-          existingBookings = data.map(b => {
-            const s = new Date(b.start_time), e = new Date(b.end_time)
-            return {
-              start: s.getHours() * 60 + s.getMinutes(),
-              end:   e.getHours() * 60 + e.getMinutes(),
-            }
+        for (const b of data || []) {
+          const s = new Date(b.start_time), e = new Date(b.end_time)
+          ;(busyByStaff[b.staff_id] = busyByStaff[b.staff_id] || []).push({
+            start: s.getHours() * 60 + s.getMinutes(),
+            end:   e.getHours() * 60 + e.getMinutes(),
           })
         }
       }
+      // Don't offer times that have already passed (allow 30 minutes' notice)
+      const now = new Date()
+      const isToday = selectedDate.toDateString() === now.toDateString()
+      const earliest = isToday ? now.getHours() * 60 + now.getMinutes() + 30 : 0
       if (!cancelled) {
-        setTimeSlots(generateSlots(settings, totalDuration, existingBookings))
+        setTimeSlots(generateStaffSlots({
+          open: hours[0], close: hours[1], interval: settings.slotInterval,
+          duration: totalDuration, busyByStaff, candidates,
+          preferred: selectedStaff && selectedStaff !== 'no-preference' ? selectedStaff : null,
+          need: isCouples ? 2 : 1, earliest,
+        }))
         setLoading(false)
       }
     }
     fetchSlots()
     return () => { cancelled = true }
-  }, [selectedDate, selectedStaff, totalDuration, settings])
+  }, [selectedDate, selectedStaff, totalDuration, settings, selectedLocation, eligibleStaff, isCouples])
 
   const groupedSlots = useMemo(() => ({
     morning: timeSlots.filter(s => s.hour < 12),
@@ -428,95 +323,32 @@ export default function SpaBookingSystem() {
 
   const goBackFromStep3 = () => setStep(relevantAddons.length > 0 && !isCouples ? 2 : 1)
 
-  const submitBooking = async () => {
-    setLoading(true)
-    try {
-      const dateStr  = selectedDate.toLocaleDateString('en-CA')
-      const startMin = selectedTime.hour * 60 + selectedTime.minute
-      const endMin   = startMin + totalDuration
-      const startISO = new Date(`${dateStr}T${String(selectedTime.hour).padStart(2,'0')}:${String(selectedTime.minute).padStart(2,'0')}:00+10:00`).toISOString()
-      const endISO   = new Date(`${dateStr}T${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}:00+10:00`).toISOString()
-
-      // Staff assignment
-      const staff1Id = (!selectedStaff || selectedStaff === 'no-preference')
-        ? eligibleStaff[0]?.id ?? null
-        : selectedStaff
-      const staff2Id = eligibleStaff.find(s => s.id !== staff1Id)?.id ?? eligibleStaff[0]?.id ?? null
-
-      let ref = `VH${Date.now().toString().slice(-6)}`
-
-      const upsertClient = async (c) => {
-        if (!c.email) return null
-        const { data: existing } = await supabase.from('clients').select('id').eq('email', c.email).maybeSingle()
-        if (existing) return existing.id
-        const { data: newC, error } = await supabase.from('clients').insert({
-          first_name: c.firstName, last_name: c.lastName || null,
-          email: c.email || null, phone: c.mobile || null,
-        }).select('id').single()
-        if (error) throw error
-        return newC.id
-      }
-
-      const createAppointmentRecord = async (clientId, staffId, price, paid, notes) => {
-        const { data: appt, error } = await supabase.from('appointments').insert({
-          location_id: selectedLocation?.id ?? '00000000-0000-0000-0000-000000000001',
-          client_id: clientId, staff_id: staffId,
-          start_time: startISO, end_time: endISO,
-          duration_mins: totalDuration, total_price: price,
-          deposit_paid: paid, status: 'confirmed',
-          notes: notes || null, booked_online: true,
-        }).select('id').single()
-        if (error) throw error
-        const svcRows = chosenServices.map((s, i) => ({
-          appointment_id: appt.id, service_name: s.name,
-          duration_mins: s.duration, price: isCouples ? s.price / 2 : s.price, sort_order: i,
-        }))
-        const { error: svcErr } = await supabase.from('appointment_services').insert(svcRows)
-        if (svcErr) throw svcErr
-        const { error: invErr } = await supabase.from('invoices').insert({
-          appointment_id: appt.id, client_id: clientId,
-          subtotal: price, total: price, amount_paid: paid,
-          status: paid >= price ? 'paid' : 'unpaid',
-        })
-        if (invErr) throw invErr
-        return appt.id
-      }
-
-      if (supabase) {
-        if (isCouples) {
-          // Each person pays half the total price
-          const priceEach = totalPrice / 2
-          const depositEach = depositAmount / 2
-          const client1Id = await upsertClient(customer)
-          const client2Id = await upsertClient(customer2)
-          const appt1Id = await createAppointmentRecord(client1Id, staff1Id, priceEach, depositEach, customer.notes)
-          await createAppointmentRecord(client2Id, staff2Id, priceEach, 0, `Couples partner of booking ${appt1Id.slice(-6).toUpperCase()}`)
-          ref = `VH${appt1Id.slice(-6).toUpperCase()}`
-        } else {
-          const clientId = await upsertClient(customer)
-          const apptId = await createAppointmentRecord(clientId, staff1Id, totalPrice, depositAmount, customer.notes)
-          ref = `VH${apptId.slice(-6).toUpperCase()}`
-        }
-      }
-
-      setBookingRef(ref)
-
-      // Reduce gift card balance if one was applied
-      if (appliedGiftCard && giftCardDiscount > 0 && supabase) {
-        const newRemaining = Math.max(0, appliedGiftCard.remaining - giftCardDiscount)
-        await supabase.from('gift_cards').update({
-          remaining: newRemaining,
-          is_active: newRemaining > 0,
-        }).eq('id', appliedGiftCard.id)
-      }
-
-      setStep(7)
-    } catch (err) {
-      console.error('Booking error:', err)
-      alert(`Something went wrong: ${err?.message || err?.code || JSON.stringify(err)}`)
-    } finally {
-      setLoading(false)
+  // The booking details sent to the server. The server works out the price itself.
+  const buildBookingPayload = () => {
+    const dateStr = selectedDate.toLocaleDateString('en-CA')
+    const startISO = new Date(`${dateStr}T${String(selectedTime.hour).padStart(2,'0')}:${String(selectedTime.minute).padStart(2,'0')}:00${melOffset(dateStr)}`).toISOString()
+    const free = selectedTime.freeStaff || []
+    const staff1Id = free[0] ?? null
+    const staff2Id = isCouples ? (free[1] ?? null) : null
+    return {
+      locationId: selectedLocation?.id ?? '00000000-0000-0000-0000-000000000001',
+      serviceIds: selectedServices,
+      addonIds: isCouples ? [] : selectedAddons,
+      isCouples,
+      payChoice,
+      giftCardCode: appliedGiftCard?.code || '',
+      startISO,
+      staff1Id,
+      staff2Id,
+      customer,
+      customer2: isCouples ? customer2 : {},
     }
+  }
+
+  // Called once the server has saved the booking
+  const finishBooking = (ref) => {
+    setBookingRef(ref)
+    setStep(7)
   }
 
   const resetBooking = () => {
@@ -620,6 +452,7 @@ export default function SpaBookingSystem() {
             eligibleStaff={eligibleStaff}
             selectedStaff={selectedStaff}
             isCouples={isCouples}
+            locationId={selectedLocation?.id}
             setSelectedStaff={(v) => { setSelectedStaff(v); setSelectedDate(null); setSelectedTime(null) }}
             calMonth={calMonth}
             setCalMonth={setCalMonth}
@@ -653,7 +486,7 @@ export default function SpaBookingSystem() {
             customer2={customer2}
             setCustomer2={setCustomer2}
             onContinue={() => {
-              const ok = customer2.firstName && customer2.lastName && customer2.email && customer2.mobile
+              const ok = customer2.firstName && customer2.lastName
               if (ok) setStep(6)
             }}
             onBack={() => setStep(4)}
@@ -681,7 +514,8 @@ export default function SpaBookingSystem() {
             giftCardDiscount={giftCardDiscount}
             setGiftCardDiscount={setGiftCardDiscount}
             loading={loading}
-            onConfirm={submitBooking}
+            getPayload={buildBookingPayload}
+            onBooked={finishBooking}
             onBack={() => setStep(isCouples ? 5 : 4)}
           />
         )}
@@ -739,16 +573,15 @@ function StepWhoIsThis({ onSelect, onBack, selectedLocation }) {
             <div style={S.whoSub}>Two guests, side by side</div>
           </button>
         )}
-        {!isDromana && (
-          <button style={S.whoCard} onClick={() => onSelect('group')}>
-            <div style={S.whoIcon}>✦ ✦ ✦</div>
-            <div style={S.whoTitle}>2–3 Guests</div>
-            <div style={S.whoSub}>A group of friends, each choosing their own treatment</div>
-          </button>
-        )}
+        {/* Group bookings are taken by phone/email until online group payment is built */}
       </div>
-      {isDromana && (
+      {isDromana ? (
         <p style={{...S.stepSub, marginTop: 20, fontStyle: 'italic'}}>Dromana is a single treatment room — solo bookings only.</p>
+      ) : (
+        <p style={{...S.stepSub, marginTop: 20, fontStyle: 'italic'}}>
+          Booking for a group of three? Please call us on <a href="tel:+61392792895" style={{ color: 'inherit' }}>03 9279 2895</a> or
+          email <a href="mailto:hello@viharaheadspa.com.au" style={{ color: 'inherit' }}>hello@viharaheadspa.com.au</a> and we'll arrange it for you.
+        </p>
       )}
       <div style={{ marginTop: 32 }}>
         <button style={S.ghostBtn} onClick={onBack}>← Back</button>
@@ -873,7 +706,7 @@ function StepAddons({ relevantAddons, selectedAddons, setSelectedAddons, onSkip,
 
 // ── Step 3: Staff + Date/Time ─────────────────────────────────────────────────
 function StepStaffTime({
-  eligibleStaff, selectedStaff, setSelectedStaff, isCouples,
+  eligibleStaff, selectedStaff, setSelectedStaff, isCouples, locationId,
   calMonth, setCalMonth,
   selectedDate, setSelectedDate,
   selectedTime, setSelectedTime,
@@ -949,7 +782,12 @@ function StepStaffTime({
               {Array.from({ length: daysInMonth }).map((_, i) => {
                 const day = i + 1
                 const date = new Date(year, month, day)
-                const past = date < today
+                const dStr = date.toLocaleDateString('en-CA')
+                const pool = (selectedStaff && selectedStaff !== 'no-preference')
+                  ? [selectedStaff] : eligibleStaff.map(s => s.id)
+                const working = pool.filter(id => isRostered(id, locationId, dStr)).length
+                const past = date < today || !hoursFor(locationId, date.getDay()) ||
+                  (isCouples ? (working < 1 || eligibleStaff.filter(s => isRostered(s.id, locationId, dStr)).length < 2) : working < 1)
                 return (
                   <button
                     key={day}
@@ -1105,7 +943,7 @@ function StepDetails({ customer, setCustomer, agreedToPolicy, setAgreedToPolicy,
 // ── Step 5: Partner Details (couples only) ────────────────────────────────────
 function StepPartnerDetails({ customer2, setCustomer2, onContinue, onBack }) {
   const update = (field) => (e) => setCustomer2(p => ({...p, [field]: e.target.value}))
-  const canContinue = customer2.firstName && customer2.lastName && customer2.email && customer2.mobile
+  const canContinue = customer2.firstName && customer2.lastName
 
   return (
     <div style={S.stepWrap}>
@@ -1123,11 +961,11 @@ function StepPartnerDetails({ customer2, setCustomer2, onContinue, onBack }) {
         </div>
       </div>
       <div style={S.formField}>
-        <label style={S.fieldLabel}>Email *</label>
+        <label style={S.fieldLabel}>Email <span style={{fontWeight:400,color:'#8B6F5E'}}>(optional)</span></label>
         <input style={S.input} type="email" value={customer2.email} onChange={update('email')} placeholder="their@email.com" />
       </div>
       <div style={S.formField}>
-        <label style={S.fieldLabel}>Mobile *</label>
+        <label style={S.fieldLabel}>Mobile <span style={{fontWeight:400,color:'#8B6F5E'}}>(optional)</span></label>
         <input style={S.input} type="tel" value={customer2.mobile} onChange={update('mobile')} placeholder="04XX XXX XXX" />
       </div>
 
@@ -1152,12 +990,12 @@ function StepPayment({
   depositAmount, isCouples, settings, customer, customer2,
   payChoice, setPayChoice,
   appliedGiftCard, setAppliedGiftCard, giftCardDiscount, setGiftCardDiscount,
-  loading, onConfirm, onBack,
+  loading, getPayload, onBooked, onBack,
 }) {
   const staffMember = staff.find(s => s.id === selectedStaff)
   const endMin = selectedTime.hour * 60 + selectedTime.minute + totalDuration
   const effectiveTotal = Math.max(0, totalPrice - giftCardDiscount)
-  const minDeposit = Math.round(effectiveTotal * (isCouples ? settings.couplesDepositPercent : settings.depositPercent) / 100)
+  const minDeposit = Math.round(effectiveTotal * (isCouples ? settings.couplesDepositPercent : settings.depositPercent)) / 100
   const [gcInput, setGcInput] = useState('')
   const [gcError, setGcError] = useState('')
   const [gcLoading, setGcLoading] = useState(false)
@@ -1237,56 +1075,99 @@ function StepPayment({
     }
   }, [PUBLISHABLE_KEY])
 
+  async function postJSON(url, body) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    let data = {}
+    try { data = await res.json() } catch {}
+    if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.')
+    return data
+  }
+
+  // After a successful payment, ask the server to save the booking.
+  // Tries a few times in case the connection drops.
+  async function saveAfterPayment(paymentIntentId) {
+    let lastErr
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        return await postJSON('/api/confirm-booking', { paymentIntentId })
+      } catch (e) {
+        lastErr = e
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)))
+      }
+    }
+    throw lastErr
+  }
+
   async function handleConfirm() {
     const amountToPay = depositAmount
+    setCardError('')
 
-    // Gift card covered everything — skip Stripe
-    if (amountToPay <= 0) {
-      onConfirm()
-      return
-    }
-
-    if (!PUBLISHABLE_KEY || !stripeRef.current || !cardElementRef.current) {
-      onConfirm()
+    // Never confirm a paid booking without taking payment
+    if (amountToPay > 0 && (!PUBLISHABLE_KEY || !stripeRef.current || !cardElementRef.current)) {
+      setCardError('Online payment is not available right now. Please try again shortly, or contact us to book.')
       return
     }
 
     setPayLoading(true)
-    setCardError('')
+    const payload = getPayload()
 
-    try {
-      const res = await fetch('/api/create-payment-intent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: amountToPay,
-          description: `Vihara Head Spa – ${customer.firstName} ${customer.lastName}`,
-        })
-      })
-      const { clientSecret, error: piError } = await res.json()
-      if (piError) throw new Error(piError)
-
-      const { error: stripeError } = await stripeRef.current.confirmCardPayment(clientSecret, {
-        payment_method: {
-          card: cardElementRef.current,
-          billing_details: {
-            name: `${customer.firstName} ${customer.lastName}`,
-            email: customer.email,
-            phone: customer.mobile || undefined,
-          }
-        }
-      })
-
-      if (stripeError) {
-        setCardError(stripeError.message)
+    // Nothing to pay (e.g. a gift card covers it) — the server double-checks this
+    if (amountToPay <= 0) {
+      try {
+        const { ref } = await postJSON('/api/confirm-booking', { booking: payload })
+        onBooked(ref)
+      } catch (e) {
+        setCardError(e.message)
         setPayLoading(false)
-        return
       }
+      return
+    }
 
-      // Payment succeeded — save the booking
-      onConfirm()
-    } catch(e) {
-      setCardError(e.message || 'Payment failed. Please try again.')
+    // 1. Server works out the price and sets up the payment
+    let intent
+    try {
+      intent = await postJSON('/api/create-payment-intent', { booking: payload })
+    } catch (e) {
+      setCardError(e.message)
+      setPayLoading(false)
+      return
+    }
+    if (Math.abs(Number(intent.amount) - amountToPay) > 0.009) {
+      setCardError('Our prices have been updated since this page loaded. Please refresh the page and book again — you have not been charged.')
+      setPayLoading(false)
+      return
+    }
+
+    // 2. Take the card payment
+    try { localStorage.setItem(PENDING_PAYMENT_KEY, intent.paymentIntentId) } catch {}
+    const { error: stripeError } = await stripeRef.current.confirmCardPayment(intent.clientSecret, {
+      payment_method: {
+        card: cardElementRef.current,
+        billing_details: {
+          name: `${customer.firstName} ${customer.lastName}`,
+          email: customer.email,
+          phone: customer.mobile || undefined,
+        }
+      }
+    })
+    if (stripeError) {
+      try { localStorage.removeItem(PENDING_PAYMENT_KEY) } catch {}
+      setCardError(stripeError.message)
+      setPayLoading(false)
+      return
+    }
+
+    // 3. Payment went through — save the booking on the server
+    try {
+      const { ref } = await saveAfterPayment(intent.paymentIntentId)
+      try { localStorage.removeItem(PENDING_PAYMENT_KEY) } catch {}
+      onBooked(ref)
+    } catch (e) {
+      setCardError('Your payment was successful and your booking is being finalised. Please do not pay again — we will be in touch to confirm. If you have any questions, please contact us.')
       setPayLoading(false)
     }
   }
@@ -1347,7 +1228,7 @@ function StepPayment({
         <div style={S.payChoiceRow}>
           <label style={S.payChoice}>
             <input type="radio" name="pay" value="deposit" checked={payChoice === 'deposit'} onChange={() => setPayChoice('deposit')} style={{ marginRight: 8 }} />
-            Pay 50% deposit — ${minDeposit}
+            Pay 50% deposit — ${money(minDeposit)}
             {isCouples && <span style={{ display: 'block', fontSize: 12, color: '#8A7060', marginTop: 2 }}>Each guest pays the remaining 50% on the day</span>}
           </label>
           <label style={S.payChoice}>
@@ -1416,20 +1297,23 @@ function StepPayment({
             </>
           ) : (
             <p style={S.stripeNote}>
-              ⚠️ Online payment not yet configured. Your booking will be confirmed and we'll collect payment at your appointment.
+              Online payment is not available right now. Please try again shortly, or contact us to book.
             </p>
           )}
         </div>
       )}
 
+      {cardError && depositAmount <= 0 && (
+        <div style={{ color: '#c0392b', fontSize: 13, marginBottom: 12 }}>{cardError}</div>
+      )}
       <div style={S.btnRow}>
         <button style={S.ghostBtn} onClick={onBack} disabled={loading || payLoading}>Back</button>
         <button
           style={S.primaryBtn}
           onClick={handleConfirm}
-          disabled={loading || payLoading || (depositAmount > 0 && PUBLISHABLE_KEY && !stripeLoaded)}
+          disabled={loading || payLoading || (depositAmount > 0 && (!PUBLISHABLE_KEY || !stripeLoaded))}
         >
-          {(loading || payLoading) ? 'Processing…' : depositAmount > 0 ? `Pay $${depositAmount}` : 'Confirm booking'}
+          {(loading || payLoading) ? 'Processing…' : depositAmount > 0 ? `Pay $${money(depositAmount)}` : 'Confirm booking'}
         </button>
       </div>
     </div>
@@ -1465,7 +1349,7 @@ function StepConfirmation({
           {fmtTime(selectedTime.hour, selectedTime.minute)} – {fmtTime(Math.floor(endMin/60), endMin%60)} ({fmt(totalDuration)})
         </div>
         <div style={{...S.confirmMeta, marginTop: 12, fontWeight: 600}}>
-          Deposit: ${depositAmount} / Total: ${totalPrice}
+          Deposit: ${money(depositAmount)} / Total: ${money(totalPrice)}
         </div>
       </div>
 
@@ -1545,8 +1429,8 @@ function GroupBookingFlow({ soloCategories, staff, settings, onBack, onDone }) {
       let existing = []
       if (supabase) {
         const dateStr = selectedDate.toLocaleDateString('en-CA')
-        const dayStart = new Date(`${dateStr}T00:00:00+10:00`).toISOString()
-        const dayEnd = new Date(`${dateStr}T23:59:59+10:00`).toISOString()
+        const dayStart = new Date(`${dateStr}T00:00:00${melOffset(dateStr)}`).toISOString()
+        const dayEnd = new Date(`${dateStr}T23:59:59${melOffset(dateStr)}`).toISOString()
         const { data } = await supabase.from('appointments').select('start_time, end_time, staff_id')
           .gte('start_time', dayStart).lte('start_time', dayEnd).not('status', 'in', '("cancelled","no_show")')
         if (data) existing = data.map(a => ({
@@ -1573,7 +1457,7 @@ function GroupBookingFlow({ soloCategories, staff, settings, onBack, onDone }) {
     try {
       const dateStr = selectedDate.toLocaleDateString('en-CA')
       const startMin = selectedTime.hour * 60 + selectedTime.minute
-      const startISO = new Date(`${dateStr}T${String(selectedTime.hour).padStart(2,'0')}:${String(selectedTime.minute).padStart(2,'0')}:00+10:00`).toISOString()
+      const startISO = new Date(`${dateStr}T${String(selectedTime.hour).padStart(2,'0')}:${String(selectedTime.minute).padStart(2,'0')}:00${melOffset(dateStr)}`).toISOString()
       let refs = []
 
       const upsertClient = async (c) => {
@@ -1589,7 +1473,7 @@ function GroupBookingFlow({ soloCategories, staff, settings, onBack, onDone }) {
         const svc = allSoloServices.find(s => s.id === guestServices[i])
         if (!svc) continue
         const endMin = startMin + svc.duration
-        const endISO = new Date(`${dateStr}T${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}:00+10:00`).toISOString()
+        const endISO = new Date(`${dateStr}T${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}:00${melOffset(dateStr)}`).toISOString()
         const staffId = staff[i % staff.length]?.id ?? null
 
         if (supabase) {
@@ -1945,6 +1829,108 @@ function AdminPinEntry({ correctPin, onSuccess }) {
 // ── Admin Panel ───────────────────────────────────────────────────────────────
 
 // ── Admin: Gift Cards ─────────────────────────────────────────────────────────
+// ── Admin: Days off ───────────────────────────────────────────────────────────
+// Mark a therapist as away on a date (holidays, sick days). Online booking
+// won't offer them that day. Existing bookings are not changed — move those by hand.
+function AdminDaysOff({ staff }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [form, setForm] = useState({ staff_id: '', from: '', to: '', note: '' })
+  const [saving, setSaving] = useState(false)
+  const todayStr = new Date().toLocaleDateString('en-CA')
+  const nameOf = (id) => staff.find(s => s.id === id)?.name || 'Unknown'
+
+  async function load() {
+    if (!supabase) { setLoading(false); return }
+    setLoading(true)
+    const { data, error } = await supabase.from('staff_days_off')
+      .select('id, staff_id, off_date, note')
+      .gte('off_date', todayStr)
+      .order('off_date')
+    if (error) setError('Could not load days off: ' + error.message)
+    setRows(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  async function add() {
+    setError('')
+    if (!form.staff_id || !form.from) { setError('Choose a therapist and a date.'); return }
+    const to = form.to || form.from
+    if (to < form.from) { setError('The end date is before the start date.'); return }
+    const dates = []
+    for (let d = new Date(form.from + 'T12:00:00Z'); d.toISOString().slice(0, 10) <= to; d.setUTCDate(d.getUTCDate() + 1)) {
+      dates.push(d.toISOString().slice(0, 10))
+      if (dates.length > 62) { setError('Please add at most two months at a time.'); return }
+    }
+    setSaving(true)
+    const { error } = await supabase.from('staff_days_off').upsert(
+      dates.map(off_date => ({ staff_id: form.staff_id, off_date, note: form.note || null })),
+      { onConflict: 'staff_id,off_date' }
+    )
+    setSaving(false)
+    if (error) { setError('Could not save: ' + error.message); return }
+    setForm({ staff_id: form.staff_id, from: '', to: '', note: '' })
+    load()
+  }
+
+  async function remove(id) {
+    const { error } = await supabase.from('staff_days_off').delete().eq('id', id)
+    if (error) { setError('Could not remove: ' + error.message); return }
+    load()
+  }
+
+  const field = { padding: '8px 12px', border: '1.5px solid #D4C5B0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', background: '#FAF6F0', color: '#3C2A1E' }
+  const fmtDay = (d) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+
+  return (
+    <div>
+      <h2 style={{ fontFamily: '"Cormorant Garamond", serif', fontSize: 28, color: '#3C2A1E', fontWeight: 600, marginBottom: 6 }}>Days off</h2>
+      <p style={{ color: '#8A7060', fontSize: 14, marginBottom: 20 }}>
+        Clients can't book a therapist on their days off. Bookings already made for those days stay as they are — please move them yourself.
+      </p>
+
+      <div style={{ ...S.adminCard, padding: 20, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: '#8A7060' }}>Therapist
+          <select style={field} value={form.staff_id} onChange={e => setForm(f => ({ ...f, staff_id: e.target.value }))}>
+            <option value="">Choose…</option>
+            {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: '#8A7060' }}>From
+          <input type="date" style={field} min={todayStr} value={form.from} onChange={e => setForm(f => ({ ...f, from: e.target.value }))} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: '#8A7060' }}>To (optional)
+          <input type="date" style={field} min={form.from || todayStr} value={form.to} onChange={e => setForm(f => ({ ...f, to: e.target.value }))} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: '#8A7060', flex: 1, minWidth: 160 }}>Note (optional)
+          <input type="text" style={field} placeholder="e.g. Holiday" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} />
+        </label>
+        <button style={{ background: '#3C2A1E', color: '#FAF6F0', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}
+          onClick={add} disabled={saving}>{saving ? 'Saving…' : 'Add day off'}</button>
+      </div>
+      {error && <p style={{ color: '#c0392b', fontSize: 14 }}>{error}</p>}
+
+      <div style={S.adminCard}>
+        {loading ? <p style={{ padding: 20, color: '#8A7060' }}>Loading…</p> :
+          rows.length === 0 ? <p style={{ padding: 20, color: '#8A7060' }}>No upcoming days off.</p> :
+          rows.map(r => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '1px solid #EFE6DA' }}>
+              <div>
+                <strong style={{ color: '#3C2A1E' }}>{nameOf(r.staff_id)}</strong>
+                <span style={{ color: '#8A7060', marginLeft: 12 }}>{fmtDay(r.off_date)}</span>
+                {r.note && <span style={{ color: '#9A8878', marginLeft: 12, fontStyle: 'italic' }}>{r.note}</span>}
+              </div>
+              <button style={{ background: 'none', border: '1px solid #D4C5B0', borderRadius: 6, padding: '4px 12px', color: '#8A7060', cursor: 'pointer', fontFamily: 'inherit' }}
+                onClick={() => remove(r.id)}>Remove</button>
+            </div>
+          ))}
+      </div>
+    </div>
+  )
+}
+
 function AdminGiftCards() {
   const [cards, setCards] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2100,6 +2086,8 @@ function AdminPanel({ categories, setCategories, allAddons, setAllAddons, staff,
     ['services', '✦  Services'],
     ['addons', '+  Add-ons'],
     ['staff', '◈  Staff'],
+    ['daysoff', '☾  Days off'],
+    ['giftcards', '❖  Gift cards'],
     ['settings', '⚙  Settings'],
   ]
   return (
@@ -2126,6 +2114,8 @@ function AdminPanel({ categories, setCategories, allAddons, setAllAddons, staff,
         {adminTab === 'addons'        && <AdminAddons allAddons={allAddons} setAllAddons={setAllAddons} />}
         {adminTab === 'staff'         && <AdminStaff staff={staff} setStaff={setStaff} />}
         {adminTab === 'settings'      && <AdminSettings settings={settings} setSettings={setSettings} />}
+        {adminTab === 'daysoff'       && <AdminDaysOff staff={staff} />}
+        {adminTab === 'giftcards'     && <AdminGiftCards />}
       </main>
     </div>
   )
@@ -2151,8 +2141,8 @@ function AdminCalendar({ staff, categories, allAddons }) {
   const fetchAppts = () => {
     if (!supabase) return
     setLoading(true)
-    const dayStart = new Date(`${dateStr}T00:00:00+10:00`).toISOString()
-    const dayEnd   = new Date(`${dateStr}T23:59:59+10:00`).toISOString()
+    const dayStart = new Date(`${dateStr}T00:00:00${melOffset(dateStr)}`).toISOString()
+    const dayEnd   = new Date(`${dateStr}T23:59:59${melOffset(dateStr)}`).toISOString()
     supabase.from('appointments')
       .select('id, staff_id, start_time, end_time, duration_mins, total_price, deposit_paid, status, notes, client_id, clients(first_name, last_name, email, phone), appointment_services(service_name, duration_mins, price)')
       .gte('start_time', dayStart).lte('start_time', dayEnd)
@@ -2313,8 +2303,8 @@ function AddAppointmentModal({ date, hour, minute, preStaffId, staff, allService
     try {
       const dateStr = date.toLocaleDateString('en-CA')
       const endMin = startH * 60 + startM + totalDuration
-      const startISO = new Date(`${dateStr}T${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}:00+10:00`).toISOString()
-      const endISO   = new Date(`${dateStr}T${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}:00+10:00`).toISOString()
+      const startISO = new Date(`${dateStr}T${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}:00${melOffset(dateStr)}`).toISOString()
+      const endISO   = new Date(`${dateStr}T${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}:00${melOffset(dateStr)}`).toISOString()
 
       let clientId = null
       if (supabase) {
@@ -2555,8 +2545,8 @@ function ApptDetailModal({ appt, staff, allServices, onClose, onStatusChange }) 
     try {
       const dateStr = start.toLocaleDateString('en-CA')
       const endMin = startH * 60 + startM + (editSvc?.duration || apptData.duration_mins || 60)
-      const startISO = new Date(`${dateStr}T${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}:00+10:00`).toISOString()
-      const endISO   = new Date(`${dateStr}T${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}:00+10:00`).toISOString()
+      const startISO = new Date(`${dateStr}T${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}:00${melOffset(dateStr)}`).toISOString()
+      const endISO   = new Date(`${dateStr}T${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}:00${melOffset(dateStr)}`).toISOString()
 
       if (supabase) {
         // Update client
@@ -2745,8 +2735,8 @@ function AdminDashboard({ staff }) {
     if (!supabase) { setLoading(false); return }
     const today = new Date()
     const todayStr = today.toLocaleDateString('en-CA')
-    const dayStart = new Date(`${todayStr}T00:00:00+10:00`).toISOString()
-    const dayEnd   = new Date(`${todayStr}T23:59:59+10:00`).toISOString()
+    const dayStart = new Date(`${todayStr}T00:00:00${melOffset(todayStr)}`).toISOString()
+    const dayEnd   = new Date(`${todayStr}T23:59:59${melOffset(todayStr)}`).toISOString()
     supabase.from('appointments')
       .select('*, clients(first_name, last_name, email, phone), appointment_services(service_name, duration_mins, price)')
       .gte('start_time', dayStart).lte('start_time', dayEnd)
@@ -2878,8 +2868,8 @@ function AdminAppointments({ staff }) {
       .select('*, clients(first_name, last_name, email, phone), appointment_services(service_name, duration_mins, price)')
       .order('start_time', { ascending: false })
       .limit(200)
-    if (dateFrom) q = q.gte('start_time', new Date(`${dateFrom}T00:00:00+10:00`).toISOString())
-    if (dateTo)   q = q.lte('start_time', new Date(`${dateTo}T23:59:59+10:00`).toISOString())
+    if (dateFrom) q = q.gte('start_time', new Date(`${dateFrom}T00:00:00${melOffset(dateFrom)}`).toISOString())
+    if (dateTo)   q = q.lte('start_time', new Date(`${dateTo}T23:59:59${melOffset(dateTo)}`).toISOString())
     if (statusFilter !== 'all') q = q.eq('status', statusFilter)
     q.then(({ data }) => { setAppts(data || []); setLoading(false) })
   }, [statusFilter, dateFrom, dateTo])
