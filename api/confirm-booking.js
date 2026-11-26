@@ -22,7 +22,7 @@ export default async function handler(req, res) {
       const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
       const pi = await stripe.paymentIntents.retrieve(paymentIntentId)
       const result = await saveFromPaymentIntent(pi)
-      return res.status(200).json({ ref: result.ref })
+      return res.status(200).json({ ref: result.ref, emailSent: !!result.emailSent })
     }
 
     const b = normalise(booking)
@@ -35,7 +35,7 @@ export default async function handler(req, res) {
       throw new BookingError('Sorry, that time has just been booked. Please go back and choose another time.', 409)
     }
     const result = await saveBooking(b, q, { amountPaid: 0 })
-    res.status(200).json({ ref: result.ref })
+    res.status(200).json({ ref: result.ref, emailSent: !!result.emailSent })
   } catch (err) {
     sendError(res, err)
   }

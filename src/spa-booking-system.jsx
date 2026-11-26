@@ -80,12 +80,13 @@ function getDaysInMonth(year, month) {
 // Times when enough of the candidate therapists are free.
 // busyByStaff: { staffId: [{start, end}] } in minutes past midnight.
 // Each slot lists the free therapists, preferred one first.
-function generateStaffSlots({ open, close, interval, duration, busyByStaff, candidates, preferred, need, earliest = 0 }) {
+function generateStaffSlots({ open, close, interval, duration, buffer = 0, busyByStaff, candidates, preferred, need, earliest = 0 }) {
   const slots = []
-  for (let cur = open * 60; cur + duration <= close * 60; cur += interval) {
+  // Each treatment is followed by `buffer` minutes of reset time, which can't be booked
+  for (let cur = open * 60; cur + duration + buffer <= close * 60; cur += interval) {
     if (cur < earliest) continue
-    const end = cur + duration
-    let free = candidates.filter(id => !(busyByStaff[id] || []).some(b => cur < b.end && end > b.start))
+    const end = cur + duration + buffer
+    let free = candidates.filter(id => !(busyByStaff[id] || []).some(b => cur < b.end + buffer && end > b.start))
     if (preferred) {
       if (!free.includes(preferred)) continue
       free = [preferred, ...free.filter(id => id !== preferred)]
@@ -286,7 +287,7 @@ export default function SpaBookingSystem() {
       if (!cancelled) {
         setTimeSlots(generateStaffSlots({
           open: hours[0], close: hours[1], interval: settings.slotInterval,
-          duration: totalDuration, busyByStaff, candidates,
+          duration: totalDuration, buffer: settings.bufferMins || 0, busyByStaff, candidates,
           preferred: selectedStaff && selectedStaff !== 'no-preference' ? selectedStaff : null,
           need: isCouples ? 2 : 1, earliest,
         }))

@@ -297,6 +297,7 @@ export const DEFAULT_SETTINGS = {
   businessHoursStart: 9,
   businessHoursEnd: 20,
   slotInterval: 15,
+  bufferMins: 15, // reset time after every treatment; never bookable
   businessName: 'Vihara Head Spa & Blow Dry Lounge',
   businessAddress: '1 Chandler Street, Parkdale VIC 3195',
   adminPin: '1234',

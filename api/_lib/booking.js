@@ -8,6 +8,8 @@ import { DEFAULT_CATEGORIES, DEFAULT_ADDONS, DEFAULT_STAFF, DEFAULT_SETTINGS, ho
 import { melParts } from '../../src/time.js'
 import { sendConfirmation } from './email.js'
 
+const BUFFER_MS = (DEFAULT_SETTINGS.bufferMins || 0) * 60 * 1000
+
 const LOCATION_IDS = [
   '00000000-0000-0000-0000-000000000001', // Parkdale
   '00000000-0000-0000-0000-000000000002', // Dromana
@@ -114,7 +116,8 @@ export function checkTimeAndStaff(b, q) {
   if (!hours) throw new BookingError('We are closed on that day. Please choose another.')
   const open = hours[0] * 60
   const close = hours[1] * 60
-  if (minutes < open || minutes + q.duration > close || minutes % DEFAULT_SETTINGS.slotInterval !== 0) {
+  const buffer = DEFAULT_SETTINGS.bufferMins || 0
+  if (minutes < open || minutes + q.duration + buffer > close || minutes % DEFAULT_SETTINGS.slotInterval !== 0) {
     throw new BookingError('That time is outside our opening hours. Please choose another.')
   }
 
@@ -148,8 +151,9 @@ export async function isSlotFree(staffIds, startISO, endISO) {
     .select('id')
     .in('staff_id', staffIds)
     .not('status', 'in', '("cancelled","no_show")')
-    .lt('start_time', endISO)
-    .gt('end_time', startISO)
+    // Every booking is followed by reset time, so widen the check by that much on both sides
+    .lt('start_time', new Date(new Date(endISO).getTime() + BUFFER_MS).toISOString())
+    .gt('end_time', new Date(new Date(startISO).getTime() - BUFFER_MS).toISOString())
     .limit(1)
   if (error) throw new BookingError('Could not check availability. Please try again.', 500)
   return !data || data.length === 0
