@@ -350,8 +350,10 @@ export default function SpaBookingSystem() {
   }
 
   // Called once the server has saved the booking
-  const finishBooking = (ref) => {
+  const [emailSent, setEmailSent] = useState(false)
+  const finishBooking = (ref, sent = false) => {
     setBookingRef(ref)
+    setEmailSent(!!sent)
     setStep(7)
   }
 
@@ -539,6 +541,8 @@ export default function SpaBookingSystem() {
             isCouples={isCouples}
             settings={settings}
             selectedLocation={selectedLocation}
+            emailSent={emailSent}
+            giftCardDiscount={giftCardDiscount}
             onNewBooking={resetBooking}
           />
         )}
@@ -1067,6 +1071,7 @@ function StepPayment({
         stripeRef.current = stripe
         const elements = stripe.elements()
         const card = elements.create('card', {
+          hidePostalCode: true,
           style: {
             base: {
               fontFamily: 'Lato, sans-serif',
@@ -1133,8 +1138,8 @@ function StepPayment({
     // Nothing to pay (e.g. a gift card covers it) — the server double-checks this
     if (amountToPay <= 0) {
       try {
-        const { ref } = await postJSON('/api/confirm-booking', { booking: payload })
-        onBooked(ref)
+        const { ref, emailSent } = await postJSON('/api/confirm-booking', { booking: payload })
+        onBooked(ref, emailSent)
       } catch (e) {
         setCardError(e.message)
         setPayLoading(false)
@@ -1178,9 +1183,9 @@ function StepPayment({
 
     // 3. Payment went through — save the booking on the server
     try {
-      const { ref } = await saveAfterPayment(intent.paymentIntentId)
+      const { ref, emailSent } = await saveAfterPayment(intent.paymentIntentId)
       try { localStorage.removeItem(PENDING_PAYMENT_KEY) } catch {}
-      onBooked(ref)
+      onBooked(ref, emailSent)
     } catch (e) {
       setCardError('Your payment was successful and your booking is being finalised. Please do not pay again — we will be in touch to confirm. If you have any questions, please contact us.')
       setPayLoading(false)
@@ -1340,7 +1345,7 @@ function StepConfirmation({
   bookingRef, chosenServices, chosenAddons,
   selectedDate, selectedTime, customer, customer2,
   totalDuration, totalPrice, depositAmount,
-  isCouples, settings, selectedLocation, onNewBooking,
+  isCouples, settings, selectedLocation, onNewBooking, emailSent, giftCardDiscount,
 }) {
   const endMin = selectedTime.hour * 60 + selectedTime.minute + totalDuration
   return (
@@ -1348,9 +1353,9 @@ function StepConfirmation({
       <div style={S.confirmIcon}>✓</div>
       <h2 style={S.stepTitle}>You're booked in!</h2>
       <p style={S.stepSub}>
-        {isCouples
-          ? `Confirmations have been sent to ${customer.email} and ${customer2?.email}`
-          : `A confirmation has been sent to ${customer.email}`}
+        {emailSent
+          ? `A confirmation has been sent to ${customer.email}`
+          : 'Your booking is confirmed. Please keep your booking reference below.'}
       </p>
 
       <div style={S.confirmCard}>
@@ -1364,7 +1369,12 @@ function StepConfirmation({
           {fmtTime(selectedTime.hour, selectedTime.minute)} – {fmtTime(Math.floor(endMin/60), endMin%60)} ({fmt(totalDuration)})
         </div>
         <div style={{...S.confirmMeta, marginTop: 12, fontWeight: 600}}>
-          Deposit: ${money(depositAmount)} / Total: ${money(totalPrice)}
+          {(() => {
+            const paidNow = Number(depositAmount) + Number(giftCardDiscount || 0)
+            const balance = Math.max(0, Math.round((Number(totalPrice) - paidNow) * 100) / 100)
+            if (balance <= 0) return <>Paid in full: ${money(totalPrice)}</>
+            return <>Deposit paid: ${money(paidNow)}<br />Balance due on the day: ${money(balance)}</>
+          })()}
         </div>
       </div>
 

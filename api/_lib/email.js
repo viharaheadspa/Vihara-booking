@@ -61,7 +61,7 @@ export async function sendConfirmation({ ref, b, q, amountPaid, staffName }) {
         ${balance > 0 ? `<tr><td style="padding:6px 0;color:#8A7060">To pay on the day</td><td>${money(balance)}</td></tr>` : ''}
       </table>
       ${loc.note ? `<p style="font-size:14px;color:#6B5444">${esc(loc.note)}</p>` : ''}
-      <p style="font-size:14px;color:#6B5444">Cancellations made within 48 hours of your appointment will forfeit the deposit. No-shows will be charged in full. If you need to reschedule, please contact us as soon as possible.</p>
+      <p style="font-size:14px;color:#6B5444">No-shows will be charged in full. If you need to reschedule, please contact us as soon as possible.</p>
       <p style="font-size:14px;color:#6B5444">Questions? Call us on 03 9279 2895 or reply to hello@viharaheadspa.com.au.</p>
       <p style="margin-top:28px">With warmth,<br>The Vihara team</p>
     </div>
@@ -75,7 +75,7 @@ export async function sendConfirmation({ ref, b, q, amountPaid, staffName }) {
     `Treatment: ${q.services.map(s => s.name).concat(q.addons.map(a => 'Add-on: ' + a.name)).join(', ')}`,
     `Total: ${money(q.total)} · Paid: ${money(paid)}${balance > 0 ? ` · To pay on the day: ${money(balance)}` : ''}`,
     loc.note,
-    'Cancellations within 48 hours forfeit the deposit. No-shows are charged in full.',
+    'No-shows are charged in full. If you need to reschedule, please contact us as soon as possible.',
     'Questions? 03 9279 2895 · hello@viharaheadspa.com.au',
   ].filter(Boolean).join('\n')
 

@@ -135,8 +135,15 @@ export function checkTimeAndStaff(b, q) {
   return { startISO: start.toISOString(), endISO }
 }
 
-// True if none of the given therapists already has a booking overlapping this time.
+// True if none of the given therapists already has a booking overlapping this time,
+// and none of them has marked that day as a day off.
 export async function isSlotFree(staffIds, startISO, endISO) {
+  const { date } = melParts(startISO)
+  const { data: off, error: offErr } = await db().from('staff_days_off')
+    .select('staff_id').in('staff_id', staffIds).eq('off_date', date).limit(1)
+  // If the days-off table doesn't exist yet, carry on rather than block all bookings
+  if (!offErr && off && off.length) return false
+
   const { data, error } = await db().from('appointments')
     .select('id')
     .in('staff_id', staffIds)
@@ -306,9 +313,9 @@ export async function saveBooking(b, q, { paymentIntentId = null, amountPaid = 0
 
   // Confirmation email (does nothing until an email service is connected)
   const staffName = DEFAULT_STAFF.find(s => s.id === b.staff1Id)?.name
-  await sendConfirmation({ ref, b, q, amountPaid, staffName })
+  const email = await sendConfirmation({ ref, b, q, amountPaid, staffName })
 
-  return { ref, alreadySaved: false, status }
+  return { ref, alreadySaved: false, status, emailSent: !!email.sent }
 }
 
 // Saves the booking that belongs to a successful Stripe payment.

@@ -231,15 +231,15 @@ export const DEFAULT_CATEGORIES = [
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 // Opening hours by location and day (0 = Sunday … 6 = Saturday). null = closed.
-// Hours are [open, close] in 24-hour time.
+// Hours are [open, close] in 24-hour time; 9.5 = 9:30am.
 export const OPENING_HOURS = {
   [PARKDALE]: {
     0: null, 1: null, 2: null,
-    3: [10, 18], 4: [10, 20], 5: [10, 20], 6: [9, 15],
+    3: [10, 18], 4: [10, 20], 5: [10, 20], 6: [9.5, 16], // Sat 9:30am–4pm
   },
-  [DROMANA]: { // Wed, Fri, Sat — TIMES TO CONFIRM with Sianne
+  [DROMANA]: { // Wed, Fri, Sat 10am–4pm
     0: null, 1: null, 2: null,
-    3: [10, 17], 4: null, 5: [10, 17], 6: [10, 17],
+    3: [10, 16], 4: null, 5: [10, 16], 6: [10, 16],
   },
 }
 
@@ -293,7 +293,7 @@ export const DEFAULT_SETTINGS = {
   depositPercent: 50,
   couplesDepositPercent: 50,
   stripePublishableKey: '',
-  cancellationPolicy: 'To secure your appointment, a deposit is required at the time of booking. Cancellations made within 48 hours of your appointment will forfeit the deposit. No-shows will be charged in full. Please contact us as soon as possible if you need to reschedule.',
+  cancellationPolicy: 'To secure your appointment, a deposit is required at the time of booking. No-shows will be charged in full. Please contact us as soon as possible if you need to reschedule.',
   businessHoursStart: 9,
   businessHoursEnd: 20,
   slotInterval: 15,
