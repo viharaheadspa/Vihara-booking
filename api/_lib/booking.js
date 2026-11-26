@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import { DEFAULT_CATEGORIES, DEFAULT_ADDONS, DEFAULT_STAFF, DEFAULT_SETTINGS, hoursFor, offeredAt, isRostered } from '../../src/catalogue.js'
 import { melParts } from '../../src/time.js'
 import { sendConfirmation } from './email.js'
+import { isEmail, isPhone } from '../../src/validate.js'
 
 const BUFFER_MS = (DEFAULT_SETTINGS.bufferMins || 0) * 60 * 1000
 
@@ -107,6 +108,10 @@ export async function quote(b, { checkGiftCard = true } = {}) {
 
 // Checks the time and therapists are valid. Returns { startISO, endISO }.
 export function checkTimeAndStaff(b, q) {
+  if (!b.customer.firstName || !b.customer.lastName) throw new BookingError('Please enter your first and last name.')
+  if (!isEmail(b.customer.email)) throw new BookingError('Please check your email address.')
+  if (!isPhone(b.customer.mobile)) throw new BookingError('Please check your mobile number.')
+  if (b.isCouples && !b.customer2.firstName) throw new BookingError("Please enter your partner's name.")
   const start = new Date(b.startISO)
   if (isNaN(start)) throw new BookingError('Please choose a time.')
   if (start.getTime() < Date.now() - 5 * 60 * 1000) throw new BookingError('That time has already passed. Please choose another.')
@@ -334,6 +339,14 @@ export async function saveFromPaymentIntent(pi) {
 }
 
 export function sendError(res, err) {
+  // Turn card/payment problems from Stripe into a message the client can act on
+  if (err && typeof err.type === 'string' && err.type.startsWith('Stripe')) {
+    console.error('Stripe error:', err.code, err.message)
+    const msg = err.type === 'StripeCardError'
+      ? (err.message || 'Your card was declined. Please try another card.')
+      : 'We could not set up the payment. Please check your details and try again, or contact us to book.'
+    return res.status(402).json({ error: msg })
+  }
   const status = err instanceof BookingError ? err.status : 500
   if (status >= 500) console.error('Booking API error:', err)
   const message = err instanceof BookingError ? err.message : 'Something went wrong. Please try again.'

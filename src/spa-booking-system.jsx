@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { DEFAULT_ADDONS, DEFAULT_CATEGORIES, DEFAULT_STAFF, DEFAULT_SETTINGS, hoursFor, offeredAt, isRostered, worksAt } from './catalogue.js'
 import { melOffset } from './time.js'
+import { isEmail, isPhone } from './validate.js'
 
 // ── Supabase ──────────────────────────────────────────────────────────────────
 const supabase = import.meta.env.VITE_SUPABASE_URL
@@ -483,7 +484,7 @@ export default function SpaBookingSystem() {
             setAgreedToPolicy={setAgreedToPolicy}
             cancellationPolicy={settings.cancellationPolicy}
             onContinue={() => {
-              const ok = customer.firstName && customer.lastName && customer.email && customer.mobile && agreedToPolicy
+              const ok = customer.firstName && customer.lastName && isEmail(customer.email) && isPhone(customer.mobile) && agreedToPolicy
               if (ok) setStep(isCouples ? 5 : 6)
             }}
             onBack={() => setStep(3)}
@@ -494,7 +495,7 @@ export default function SpaBookingSystem() {
             customer2={customer2}
             setCustomer2={setCustomer2}
             onContinue={() => {
-              const ok = customer2.firstName && customer2.lastName
+              const ok = customer2.firstName && customer2.lastName && (!customer2.email || isEmail(customer2.email)) && (!customer2.mobile || isPhone(customer2.mobile))
               if (ok) setStep(6)
             }}
             onBack={() => setStep(4)}
@@ -906,7 +907,11 @@ function StepStaffTime({
 // ── Step 4: Customer Details ───────────────────────────────────────────────────
 function StepDetails({ customer, setCustomer, agreedToPolicy, setAgreedToPolicy, cancellationPolicy, onContinue, onBack }) {
   const update = (field) => (e) => setCustomer(p => ({...p, [field]: e.target.value}))
-  const canContinue = customer.firstName && customer.lastName && customer.email && customer.mobile && agreedToPolicy
+  const [touched, setTouched] = useState({})
+  const emailOk = isEmail(customer.email)
+  const mobileOk = isPhone(customer.mobile)
+  const canContinue = customer.firstName && customer.lastName && emailOk && mobileOk && agreedToPolicy
+  const hint = { color: '#A0522D', fontSize: 13, marginTop: 6 }
 
   return (
     <div style={S.stepWrap}>
@@ -925,12 +930,16 @@ function StepDetails({ customer, setCustomer, agreedToPolicy, setAgreedToPolicy,
 
       <div style={S.formField}>
         <label style={S.fieldLabel}>Email *</label>
-        <input style={S.input} type="email" value={customer.email} onChange={update('email')} placeholder="your@email.com" />
+        <input style={S.input} type="email" value={customer.email} onChange={update('email')} placeholder="your@email.com"
+          onBlur={() => setTouched(t => ({ ...t, email: true }))} />
+        {touched.email && customer.email && !emailOk && <div style={hint}>Please check your email address, e.g. name@gmail.com</div>}
       </div>
 
       <div style={S.formField}>
         <label style={S.fieldLabel}>Mobile *</label>
-        <input style={S.input} type="tel" value={customer.mobile} onChange={update('mobile')} placeholder="04XX XXX XXX" />
+        <input style={S.input} type="tel" value={customer.mobile} onChange={update('mobile')} placeholder="04XX XXX XXX"
+          onBlur={() => setTouched(t => ({ ...t, mobile: true }))} />
+        {touched.mobile && customer.mobile && !mobileOk && <div style={hint}>Please check your mobile number, e.g. 0412 345 678</div>}
       </div>
 
       <div style={S.formField}>
@@ -970,7 +979,7 @@ function StepDetails({ customer, setCustomer, agreedToPolicy, setAgreedToPolicy,
 // ── Step 5: Partner Details (couples only) ────────────────────────────────────
 function StepPartnerDetails({ customer2, setCustomer2, onContinue, onBack }) {
   const update = (field) => (e) => setCustomer2(p => ({...p, [field]: e.target.value}))
-  const canContinue = customer2.firstName && customer2.lastName
+  const canContinue = customer2.firstName && customer2.lastName && (!customer2.email || isEmail(customer2.email)) && (!customer2.mobile || isPhone(customer2.mobile))
 
   return (
     <div style={S.stepWrap}>
